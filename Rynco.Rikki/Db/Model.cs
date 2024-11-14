@@ -104,14 +104,29 @@ public sealed class MergeQueue
     public required int RepoId { get; set; }
 
     /// <summary>
-    /// The target branch for this merge queue.
+    /// The target branch for this merge queue. This is the branch that will be updated when CI
+    /// passed.
     /// </summary>
     public required string TargetBranch { get; set; }
 
     /// <summary>
-    /// The base commit for this merge queue.
+    /// The working branch for this merge queue. This is the branch where PRs are first merged into
+    /// before running CI.
     /// </summary>
-    public string? BaseCommit { get; set; }
+    public required string WorkingBranch { get; set; }
+
+    /// <summary>
+    /// The tail sequence number for this merge queue, representing the oldest PR in the queue.
+    /// PRs with a smaller sequence number than this one are already merged.
+    /// </summary>
+    public required int TailSequenceNumber { get; set; }
+
+    /// <summary>
+    /// The head sequence number for this merge queue, representing the newest PR in the queue.
+    /// No PR should have a sequence number larger than this one.
+    /// The contents of the merge queue are the PRs with sequence numbers between the tail and head.
+    /// </summary>
+    public required int HeadSequenceNumber { get; set; }
 
     /// <summary>
     /// The tip commit for this merge queue.
@@ -163,14 +178,9 @@ public sealed class PullRequest
     public required int Priority { get; set; } = 0;
 
     /// <summary>
-    /// The head of the pull request.
+    /// The sequence number within the merge queue. Non null if the PR is enqueued.
     /// </summary>
-    public required string Head { get; set; }
-
-    /// <summary>
-    /// Whether the pull request can be merged. Updated on branch updates.
-    /// </summary>
-    public required bool CanMerge { get; set; } = false;
+    public int? MqSequenceNumber { get; set; }
 
     /// <summary>
     /// The commit SHA of the pull request in the merge queue. Non null if the PR is enqueued.
@@ -181,4 +191,9 @@ public sealed class PullRequest
     /// The CI ID of the commit in the merge queue. Non null if the PR is enqueued.
     /// </summary>
     public int? MqCiId { get; set; }
+
+    /// <summary>
+    /// Whether the CI has passed for the commit in the merge queue. 
+    /// </summary>
+    public bool MqCiPassed { get; set; }
 }

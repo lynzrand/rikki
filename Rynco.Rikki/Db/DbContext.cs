@@ -46,6 +46,8 @@ public sealed class RikkiDbContext : DbContext
         modelBuilder.Entity<PullRequest>()
             .HasIndex(nameof(PullRequest.RepoId), nameof(PullRequest.MqCiId));
         modelBuilder.Entity<PullRequest>()
+            .HasIndex(nameof(PullRequest.RepoId), nameof(PullRequest.MqSequenceNumber));
+        modelBuilder.Entity<PullRequest>()
             .HasOne<Repo>()
             .WithMany()
             .HasForeignKey(pr => pr.RepoId);
