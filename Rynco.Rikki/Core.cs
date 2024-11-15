@@ -202,51 +202,79 @@ public sealed class Core
         var dbMq = await db.MergeQueues.FirstOrDefaultAsync(mq => mq.RepoId == dbRepo.Id)
             ?? throw new ArgumentException($"Merge queue for repo {repoUri} not found in database");
 
-        // Synchronous git operations
+        // Check if we need to rebuild the merge queue. It happens when the PR has a 
+        // priority higher than the current head of the merge queue, so it can't be inserted
+        // at the head of the queue.
+        var currentHead = db.PullRequests.FirstOrDefault(pr =>
+            pr.MergeQueueId == dbMq.Id
+            && pr.MqSequenceNumber == dbMq.HeadSequenceNumber);
+        var needRebuild = currentHead != null && dbPr.Priority > currentHead.Priority;
 
-        var resultCommit = await Task.Run(() =>
+        if (needRebuild)
         {
-            var repo = OpenAndPull(repoUri);
-
-            // Get the branch of the pull request.
-            var branchName = dbPr.SourceBranch;
-            var branch = repo.Branches[branchName]
-                ?? throw new ArgumentException($"Branch {branchName} not found in repository {repoUri}");
-            var branchTip = branch.Tip;
-
-            // Get the tip commit of the merge queue.
-            var mergeQueueBranch = repo.Branches[dbMq.WorkingBranch]
-                ?? throw new ArgumentException($"Merge queue branch {dbMq.TargetBranch} not found in repository {repoUri}");
-            var tip = mergeQueueBranch.Tip;
-
-            // Try to merge the branch into the tip commit.
-            if (!repo.ObjectDatabase.CanMergeWithoutConflict(branchTip, tip))
+            var prs = await GetMqEnqueuedPrs(dbMq);
+            await Task.Run(() =>
             {
-                throw new ArgumentException($"Cannot merge branch {branchName} into merge queue for {repoUri}, conflict detected");
-            }
-
-            var resultCommit = DoMerge(
-                repo,
-                branch,
-                mergeQueueBranch,
-                MergeStyle.Merge,
-                committer,
-                $"Merge pull request #{prNumber} from {branchName}");
-
-            // Push the merge commit to the remote repository.
-            var remote = repo.Network.Remotes["origin"];
-            repo.Network.Push(mergeQueueBranch, new PushOptions
-            {
-                CredentialsProvider = this.credentialsHandler
+                var repo = OpenAndPull(repoUri);
+                var failedPrs = RebuildMergeQueue(repo, dbMq, prs, committer);
+                foreach (var failedPr in failedPrs)
+                {
+                    failedPr.MqSequenceNumber = null;
+                    failedPr.MqCommitSha = null;
+                    failedPr.MqCiId = null;
+                }
             });
 
-            return resultCommit;
-        });
+            // Update the database.
+            await db.SaveChangesAsync();
+            await txn.CommitAsync();
+        }
+        else
+        {
+            var resultCommit = await Task.Run(() =>
+            {
+                var repo = OpenAndPull(repoUri);
 
-        // Update the database.
-        dbMq.TipCommit = resultCommit.Sha;
-        dbPr.MqCommitSha = resultCommit.Sha;
 
+                // Get the branch of the pull request.
+                var branchName = dbPr.SourceBranch;
+                var branch = repo.Branches[branchName]
+                    ?? throw new ArgumentException($"Branch {branchName} not found in repository {repoUri}");
+                var branchTip = branch.Tip;
+
+                // Get the tip commit of the merge queue.
+                var mergeQueueBranch = repo.Branches[dbMq.WorkingBranch]
+                    ?? throw new ArgumentException($"Merge queue branch {dbMq.TargetBranch} not found in repository {repoUri}");
+                var tip = mergeQueueBranch.Tip;
+
+                // Try to merge the branch into the tip commit.
+                if (!repo.ObjectDatabase.CanMergeWithoutConflict(branchTip, tip))
+                {
+                    throw new ArgumentException($"Cannot merge branch {branchName} into merge queue for {repoUri}, conflict detected");
+                }
+
+                var resultCommit = DoMerge(
+                    repo,
+                    branch,
+                    mergeQueueBranch,
+                    MergeStyle.Merge,
+                    committer,
+                    $"Merge pull request #{prNumber} from {branchName}");
+
+                // Push the merge commit to the remote repository.
+                var remote = repo.Network.Remotes["origin"];
+                repo.Network.Push(mergeQueueBranch, new PushOptions
+                {
+                    CredentialsProvider = this.credentialsHandler
+                });
+
+                return resultCommit;
+            });
+
+            // Update the database.
+            dbMq.TipCommit = resultCommit.Sha;
+            dbPr.MqCommitSha = resultCommit.Sha;
+        }
         await db.SaveChangesAsync();
         await txn.CommitAsync();
     }

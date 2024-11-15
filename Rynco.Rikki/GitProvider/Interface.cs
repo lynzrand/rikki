@@ -6,4 +6,5 @@ namespace Rynco.Rikki;
 public interface IGitProvider
 {
     public Task PullRequestSendComment(string repository, int pullRequestId, string comment);
+    public Task AbortCI(string repository, int ciNumber);
 }
