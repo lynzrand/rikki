@@ -68,7 +68,7 @@ public sealed class Core
         }
         else
         {
-            return pr.MqSequenceNumber.Value - mq.TailSequenceNumber;
+            return pr.MqSequenceNumber.Value - mq.HeadSequenceNumber;
         }
     }
 
@@ -207,7 +207,7 @@ public sealed class Core
         // at the head of the queue.
         var currentHead = db.PullRequests.FirstOrDefault(pr =>
             pr.MergeQueueId == dbMq.Id
-            && pr.MqSequenceNumber == dbMq.HeadSequenceNumber);
+            && pr.MqSequenceNumber == dbMq.TailSequenceNumber);
         var needRebuild = currentHead != null && dbPr.Priority > currentHead.Priority;
 
         if (needRebuild)
@@ -305,7 +305,7 @@ public sealed class Core
     /// <returns>The list of pull requests that failed to merge</returns>
     public List<PullRequest> RebuildMergeQueue(Repository repo, MergeQueue queue, List<PullRequest> prs, Signature committer)
     {
-        int seqNum = queue.TailSequenceNumber;
+        int seqNum = queue.HeadSequenceNumber;
         var targetBranch = repo.Branches[queue.TargetBranch]
             ?? throw new ArgumentException($"Merge queue branch {queue.TargetBranch} not found in repository {repo.Info.WorkingDirectory}");
 
@@ -342,7 +342,7 @@ public sealed class Core
         }
 
         // Update the database.
-        queue.TailSequenceNumber = seqNum;
+        queue.HeadSequenceNumber = seqNum;
 
         // Push the changes to the remote repository.
         repo.Network.Push(workingBranch, new PushOptions
@@ -358,7 +358,7 @@ public sealed class Core
         return await db.PullRequests.Where(pr =>
             pr.MergeQueueId == mq.Id
             && pr.MqSequenceNumber != null
-            && pr.MqSequenceNumber >= mq.TailSequenceNumber).ToListAsync();
+            && pr.MqSequenceNumber >= mq.HeadSequenceNumber).ToListAsync();
     }
 
     public async void OnMergeQueueCICompleted(Uri repoUri, string commitSha, bool success, Signature committer)
@@ -379,10 +379,10 @@ public sealed class Core
         // that have passed CI.
         if (success)
         {
-            if (dbPr.MqSequenceNumber == dbMq.TailSequenceNumber)
+            if (dbPr.MqSequenceNumber == dbMq.HeadSequenceNumber)
             {
                 PullRequest mergeHead = dbPr;
-                int seq = dbMq.TailSequenceNumber + 1;
+                int seq = dbMq.HeadSequenceNumber + 1;
                 while (true)
                 {
                     var nextPr = db.PullRequests.FirstOrDefault(pr =>

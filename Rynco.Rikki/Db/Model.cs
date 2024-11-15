@@ -116,22 +116,17 @@ public sealed class MergeQueue
     public required string WorkingBranch { get; set; }
 
     /// <summary>
-    /// The tail sequence number for this merge queue, representing the oldest PR in the queue.
+    /// The head sequence number for this merge queue, representing the oldest PR in the queue.
     /// PRs with a smaller sequence number than this one are already merged.
-    /// </summary>
-    public required int TailSequenceNumber { get; set; }
-
-    /// <summary>
-    /// The head sequence number for this merge queue, representing the newest PR in the queue.
-    /// No PR should have a sequence number larger than this one.
-    /// The contents of the merge queue are the PRs with sequence numbers between the tail and head.
     /// </summary>
     public required int HeadSequenceNumber { get; set; }
 
     /// <summary>
-    /// The tip commit for this merge queue.
+    /// The tail sequence number for this merge queue, representing the newest PR in the queue.
+    /// No PR should have a sequence number larger than this one.
+    /// The contents of the merge queue are the PRs with sequence numbers between the tail and head.
     /// </summary>
-    public string? TipCommit { get; set; }
+    public required int TailSequenceNumber { get; set; }
 }
 
 /// <summary>
