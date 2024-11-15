@@ -5,6 +5,10 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Rynco.Rikki;
 
+/// <summary>
+/// The core machinery of Rikki. This class is responsible for handling callbacks triggered
+/// by outside events.
+/// </summary>
 public sealed class Core
 {
     string rootPath;
@@ -341,7 +345,7 @@ public sealed class Core
         var dbMq = await db.MergeQueues.FirstOrDefaultAsync(mq => mq.Id == dbPr.MergeQueueId)
             ?? throw new ArgumentException($"Merge queue {dbPr.MergeQueueId} not found in database");
 
-        var repo = OpenAndPull(repoUri);
+        var repo = await Task.Run(() => OpenAndPull(repoUri));
 
         // If CI succeeded and the PR is the first in the queue, merge it and any subsequent PRs 
         // that have passed CI.
@@ -366,14 +370,17 @@ public sealed class Core
                     seq++;
                 }
 
-                var targetBranch = repo.Branches[dbMq.TargetBranch]
-                    ?? throw new ArgumentException($"Merge queue branch {dbMq.TargetBranch} not found in repository {repo.Info.WorkingDirectory}");
-                repo.Refs.UpdateTarget(targetBranch.Reference, mergeHead.MqCommitSha);
-
-                // Push the changes to the remote repository.
-                repo.Network.Push(targetBranch, new PushOptions
+                await Task.Run(() =>
                 {
-                    CredentialsProvider = this.credentialsHandler
+                    var targetBranch = repo.Branches[dbMq.TargetBranch]
+                        ?? throw new ArgumentException($"Merge queue branch {dbMq.TargetBranch} not found in repository {repo.Info.WorkingDirectory}");
+                    repo.Refs.UpdateTarget(targetBranch.Reference, mergeHead.MqCommitSha);
+
+                    // Push the changes to the remote repository.
+                    repo.Network.Push(targetBranch, new PushOptions
+                    {
+                        CredentialsProvider = this.credentialsHandler
+                    });
                 });
             }
             else
@@ -394,20 +401,24 @@ public sealed class Core
 
             // Now the enqueued PRs don't contain the failed PR.
             var prs = await GetMqEnqueuedPrs(dbMq);
-            var failedPrs = RebuildMergeQueue(repo, dbMq, prs, committer);
-            foreach (var failedPr in failedPrs)
-            {
-                failedPr.MqSequenceNumber = null;
-                failedPr.MqCommitSha = null;
-                failedPr.MqCiId = null;
-            }
 
-            // Push the changes to the remote repository.
-            var targetBranch = repo.Branches[dbMq.WorkingBranch]
-                ?? throw new ArgumentException($"Merge queue working branch {dbMq.WorkingBranch} not found in repository {repo.Info.WorkingDirectory}");
-            repo.Network.Push(targetBranch, new PushOptions
+            await Task.Run(() =>
             {
-                CredentialsProvider = this.credentialsHandler
+                var failedPrs = RebuildMergeQueue(repo, dbMq, prs, committer);
+                foreach (var failedPr in failedPrs)
+                {
+                    failedPr.MqSequenceNumber = null;
+                    failedPr.MqCommitSha = null;
+                    failedPr.MqCiId = null;
+                }
+
+                // Push the changes to the remote repository.
+                var targetBranch = repo.Branches[dbMq.WorkingBranch]
+                    ?? throw new ArgumentException($"Merge queue working branch {dbMq.WorkingBranch} not found in repository {repo.Info.WorkingDirectory}");
+                repo.Network.Push(targetBranch, new PushOptions
+                {
+                    CredentialsProvider = this.credentialsHandler
+                });
             });
         }
 
