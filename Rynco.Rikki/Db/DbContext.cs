@@ -7,6 +7,7 @@ public sealed class RikkiDbContext : DbContext
     public DbSet<Repo> Repos { get; set; } = null!;
     public DbSet<MergeQueue> MergeQueues { get; set; } = null!;
     public DbSet<PullRequest> PullRequests { get; set; } = null!;
+    public DbSet<EnqueuedPullRequest> PullRequestCiInfos { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -44,10 +45,6 @@ public sealed class RikkiDbContext : DbContext
             nameof(PullRequest.SourceBranch),
             nameof(PullRequest.TargetBranch));
         modelBuilder.Entity<PullRequest>()
-            .HasIndex(nameof(PullRequest.RepoId), nameof(PullRequest.MqCiId));
-        modelBuilder.Entity<PullRequest>()
-            .HasIndex(nameof(PullRequest.RepoId), nameof(PullRequest.MqSequenceNumber));
-        modelBuilder.Entity<PullRequest>()
             .HasOne<Repo>()
             .WithMany()
             .HasForeignKey(pr => pr.RepoId);
@@ -55,6 +52,20 @@ public sealed class RikkiDbContext : DbContext
             .HasOne<MergeQueue>()
             .WithMany()
             .HasForeignKey(pr => pr.MergeQueueId);
+
+        // CI info is entirely associated with the PR, so it doesn't need a separate key.
+        modelBuilder.Entity<EnqueuedPullRequest>()
+            .HasKey(nameof(EnqueuedPullRequest.PullRequestId));
+        modelBuilder.Entity<PullRequest>()
+            .HasOne(pr => pr.CiInfo)
+            .WithOne()
+            .HasForeignKey<EnqueuedPullRequest>(ci => ci.PullRequestId)
+            .OnDelete(DeleteBehavior.Cascade)
+            .IsRequired();
+        modelBuilder.Entity<EnqueuedPullRequest>()
+            .HasIndex(nameof(EnqueuedPullRequest.CiNumber));
+        modelBuilder.Entity<EnqueuedPullRequest>()
+            .HasIndex(nameof(EnqueuedPullRequest.SequenceNumber));
     }
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)

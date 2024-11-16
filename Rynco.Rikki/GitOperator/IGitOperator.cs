@@ -9,6 +9,10 @@ namespace Rynco.Rikki.GitOperator;
 public interface IGitOperator<TRepo, TBranch, TCommitId>
 where TCommitId : IEquatable<TCommitId>
 {
+    public TCommitId ParseCommitId(string commitId);
+
+    public string FormatCommitId(TCommitId commitId);
+
     /// <summary>
     /// Open a repository at the given URI. If the repository isn't already cloned, it will be cloned.
     /// Otherwise, it will be synchronized with the remote.

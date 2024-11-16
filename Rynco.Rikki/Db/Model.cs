@@ -116,14 +116,14 @@ public sealed class MergeQueue
     public required string WorkingBranch { get; set; }
 
     /// <summary>
-    /// The head sequence number for this merge queue, representing the oldest PR in the queue.
-    /// PRs with a smaller sequence number than this one are already merged.
+    /// The head sequence number for this merge queue, representing the oldest PR still not merged
+    /// in the queue. PRs with a smaller sequence number than this one are already merged.
     /// </summary>
     public required int HeadSequenceNumber { get; set; }
 
     /// <summary>
-    /// The tail sequence number for this merge queue, representing the newest PR in the queue.
-    /// No PR should have a sequence number larger than this one.
+    /// The tail sequence number for this merge queue, representing the next sequence number to be
+    /// allocated in this queue. No PRs should have a sequence number equal to or greater than this.
     /// The contents of the merge queue are the PRs with sequence numbers between the tail and head.
     /// </summary>
     public required int TailSequenceNumber { get; set; }
@@ -173,22 +173,47 @@ public sealed class PullRequest
     public required int Priority { get; set; } = 0;
 
     /// <summary>
-    /// The sequence number within the merge queue. Non null if the PR is enqueued.
+    /// The CI information associated with the pull request.
     /// </summary>
-    public int? MqSequenceNumber { get; set; }
+    public EnqueuedPullRequest? CiInfo { get; set; }
+}
+
+public sealed class EnqueuedPullRequest
+{
+    /// <summary>
+    /// The associated pull request ID.
+    /// </summary>
+    public required int PullRequestId { get; set; }
 
     /// <summary>
-    /// The commit SHA of the pull request in the merge queue. Non null if the PR is enqueued.
+    /// The sequence number of the pull request in the merge queue. See <see cref="MergeQueue"/>.
     /// </summary>
-    public string? MqCommitSha { get; set; }
+    public required int SequenceNumber { get; set; }
 
     /// <summary>
-    /// The CI ID of the commit in the merge queue. Non null if the PR is enqueued.
+    /// The branch associated with the merge queue CI of the pull request.
+    /// This is not the source branch of the pull request.
     /// </summary>
-    public int? MqCiId { get; set; }
+    public required string AssociatedBranch { get; set; }
 
     /// <summary>
-    /// Whether the CI has passed for the commit in the merge queue. 
+    /// The commit SHA of the pull request in the merge queue.
     /// </summary>
-    public bool MqCiPassed { get; set; }
+    public required string MqCommit { get; set; }
+
+    /// <summary>
+    /// The CI number allocated to the pull request. This should be associated with the repository
+    /// of the pull request.
+    /// </summary>
+    public int? CiNumber { get; set; }
+
+    /// <summary>
+    /// Whether the CI has finished.
+    /// </summary>
+    public bool Finished { get; set; } = false;
+
+    /// <summary>
+    /// Whether the CI has passed.
+    /// </summary>
+    public bool Passed { get; set; } = false;
 }
