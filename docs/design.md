@@ -8,12 +8,15 @@ By queue conventions, the oldest commit is called the head commit, and the newes
 
 A PR can be added into a merge queue when:
 
+- It has been requested to be added to a merge queue
 - It has passed its own merge CI
 - It has no merge conflict with the target branch
 
 The PR should be inserted after the last item where `other.priority >= pr.priority`. In most cases this means the PR is added to the tail of the queue; but if not, the merge queue needs to be rebuilt.
 
 A CI should be triggered for the merge commit (or tail commit if it uses rebase).
+
+If the CI for the given PR is still running, it should be queued for insertion, but not inserted yet.
 
 ## Popping PRs from the merge queue
 
