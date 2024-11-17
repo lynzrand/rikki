@@ -1,7 +1,12 @@
 using System.Collections.Immutable;
+using System.Text;
+using Microsoft.Extensions.Logging;
+using NUnit.Framework.Constraints;
 using Rynco.Rikki.GitOperator;
 
 namespace Rynco.Rikki.Tests;
+
+using MockTree = ImmutableDictionary<string, string>;
 
 /// <summary>
 /// A mock repository for testing purposes. Commit ids are integers, and branches are strings.
@@ -23,6 +28,11 @@ public class MockRepo(string name)
         maxCommitId++;
         Commits.Add(maxCommitId, info);
         return new MockCommitId(maxCommitId);
+    }
+
+    public MockCommit GetCommit(MockCommitId commitId)
+    {
+        return Commits[commitId.Id];
     }
 
     public void CreateBranch(string branchName, MockCommitId commitId)
@@ -94,17 +104,17 @@ public class MockRepo(string name)
     {
         HashSet<string> result = new();
 
-        foreach (var (path, content) in treeA.Files)
+        foreach (var (path, content) in treeA)
         {
-            if (!treeB.Files.TryGetValue(path, out var otherContent) || otherContent != content)
+            if (!treeB.TryGetValue(path, out var otherContent) || otherContent != content)
             {
                 result.Add(path);
             }
         }
 
-        foreach (var (path, content) in treeB.Files)
+        foreach (var (path, content) in treeB)
         {
-            if (!treeA.Files.ContainsKey(path))
+            if (!treeA.ContainsKey(path))
             {
                 result.Add(path);
             }
@@ -144,17 +154,17 @@ public class MockRepo(string name)
         }
 
         // Merge the diffs
-        var mergedTree = treeLca.Files.ToBuilder();
+        var mergedTree = treeLca.ToBuilder();
         foreach (var path in diffA)
         {
-            mergedTree[path] = treeA.Files[path];
+            mergedTree[path] = treeA[path];
         }
         foreach (var path in diffB)
         {
-            mergedTree[path] = treeB.Files[path];
+            mergedTree[path] = treeB[path];
         }
 
-        return new MockTree(mergedTree.ToImmutable());
+        return mergedTree.ToImmutable();
     }
 
     /// <summary>
@@ -199,16 +209,16 @@ public class MockRepo(string name)
             var diff = DiffTrees(Commits[commitParent].Tree, commitTree);
 
             // Apply diff
-            var newTree = Commits[workingCommit.Id].Tree.Files.ToBuilder();
+            var newTree = Commits[workingCommit.Id].Tree.ToBuilder();
             foreach (var path in diff)
             {
                 if (targetBranchDiff.Contains(path))
                 {
                     return null;
                 }
-                if (commitTree.Files.ContainsKey(path))
+                if (commitTree.ContainsKey(path))
                 {
-                    newTree[path] = commitTree.Files[path];
+                    newTree[path] = commitTree[path];
                 }
                 else
                 {
@@ -218,7 +228,7 @@ public class MockRepo(string name)
 
             var commitInfo = Commits[commit.Id] with
             {
-                Tree = new MockTree(newTree.ToImmutable()),
+                Tree = newTree.ToImmutable(),
                 ParentIds = [workingCommit.Id]
             };
             workingCommit = CreateCommit(commitInfo);
@@ -226,36 +236,61 @@ public class MockRepo(string name)
 
         return workingCommit;
     }
+
+    public override string ToString()
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine($"Repository: {name}");
+        sb.AppendLine("Commits:");
+        foreach (var (id, commit) in Commits)
+        {
+            sb.AppendLine($"  {id}: {commit.Message}; parent: {string.Join(", ", commit.ParentIds)}");
+            foreach (var branch in Branches)
+            {
+                if (branch.Value == id)
+                {
+                    sb.AppendLine("     ^-- " + branch.Key);
+                }
+            }
+        }
+        return sb.ToString();
+    }
 }
 
 public record MockCommit(
     string Message,
     CommitterInfo CommitterInfo,
     List<int> ParentIds,
-    MockTree Tree);
+    ImmutableDictionary<string, string> Tree);
 
 public record MockBranch(string Name);
 
-public record MockCommitId(int Id);
-
-/// <summary>
-/// A mock git tree snapshot. The key is the file path, and the value is the file content.
-/// </summary>
-/// <param name="Name"></param>
-/// <param name="Files"></param>
-public record MockTree(ImmutableDictionary<string, string> Files);
+public record MockCommitId(int Id)
+{
+    public static implicit operator MockCommitId(int id) => new(id);
+    public static implicit operator int(MockCommitId id) => id.Id;
+}
 
 /// <summary>
 /// A simple mock implementation of <see cref="IGitOperator{TRepo, TBranch, TCommitId}"/>.
 /// </summary>
 public class MockGitOperator : IGitOperator<MockRepo, MockBranch, MockCommitId>
 {
-    public MockGitOperator()
+    ILogger<MockGitOperator>? logger;
+
+    public MockGitOperator(ILogger<MockGitOperator>? logger = null)
     {
+        this.logger = logger;
     }
 
     private Dictionary<string, MockRepo> repos = [];
 
+    public MockRepo CreateRepository(string uri)
+    {
+        var repo = new MockRepo(uri);
+        repos.Add(uri, repo);
+        return repo;
+    }
 
     public string FormatCommitId(MockCommitId commitId)
     {

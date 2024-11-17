@@ -33,6 +33,30 @@ where TCommitId : IEquatable<TCommitId>
         return $"merge-{prNumber}";
     }
 
+    public async Task OnPrAdded(string uri, int prNumber, int priority, string sourceBranch, string targetBranch)
+    {
+        using var txn = await db.BeginTransaction();
+        var dbRepo = await db.GetRepoByUrl(uri);
+        var dbMq = await db.GetMergeQueueByRepoAndBranch(dbRepo.Id, targetBranch);
+        if (dbMq == null)
+        {
+            return; // No merge queue was created for this branch, silently ignore
+        }
+
+        db.AddPr(new PullRequest
+        {
+            RepoId = dbRepo.Id,
+            MergeQueueId = dbMq.Id,
+            SourceBranch = sourceBranch,
+            TargetBranch = targetBranch,
+            Number = prNumber,
+            Priority = priority
+        });
+
+        await db.SaveChanges();
+        await txn.CommitAsync();
+    }
+
     public async Task OnRequestToAddToMergeQueue(string uri, int prNumber, CommitterInfo info)
     {
         var repo = await gitOperator.OpenAndUpdateAsync(uri);
@@ -84,7 +108,7 @@ where TCommitId : IEquatable<TCommitId>
         // Check if the PR is already in the merge queue
         if (pr.CiInfo != null)
         {
-            return;
+            throw new InvalidOperationException("The PR is already in the merge queue.");
         }
 
         // Check if the PR can be added to the tail of the merge queue
@@ -173,6 +197,10 @@ where TCommitId : IEquatable<TCommitId>
         {
             throw new FailedToMergeException(FailedToMergeException.ReasonKind.MergeConflict);
         }
+
+        // Remove the temporary branch and fast forward the working branch
+        await gitOperator.ResetBranchToCommitAsync(repo, gitWorkingBranch, resultCommit);
+        await gitOperator.RemoveBranchAsync(repo, gitSourceBranch);
 
         return resultCommit;
     }
@@ -317,6 +345,7 @@ where TCommitId : IEquatable<TCommitId>
         var mergeList = prs.TakeWhile(pr => pr.CiInfo != null && pr.CiInfo.Finished && pr.CiInfo.Passed).ToList();
         if (mergeList.Count == 0)
         {
+            // TODO: Warn about no PRs to merge
             return;
         }
 

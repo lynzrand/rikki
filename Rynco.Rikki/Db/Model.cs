@@ -55,12 +55,12 @@ public enum PullRequestState
 /// <summary>
 /// Represents a repository that Rikki is managing.
 /// </summary>
-public sealed class Repo
+public sealed record Repo
 {
     /// <summary>
     /// The internal ID of the repository.
     /// </summary>
-    public required int Id { get; set; }
+    public int Id { get; set; }
 
     /// <summary>
     /// The display name of the repository.
@@ -91,12 +91,12 @@ public sealed class Repo
 /// <summary>
 /// Represents a merge queue for a repository.
 /// </summary>
-public sealed class MergeQueue
+public sealed record MergeQueue
 {
     /// <summary>
     /// The internal ID of the merge queue.
     /// </summary>
-    public required int Id { get; set; }
+    public int Id { get; set; }
 
     /// <summary>
     /// The repository this merge queue is for.
@@ -134,13 +134,13 @@ public sealed class MergeQueue
 /// Note that the branch for the merge queue itself is not represented here --
 /// it's just for those pull requests that are to be merged into a target branch.
 /// </summary>
-public sealed class PullRequest
+public sealed record PullRequest
 {
     /// <summary>
     /// The internal ID of the pull request.
     /// </summary>
     [Key]
-    public required int Id { get; set; }
+    public int Id { get; set; }
 
     /// <summary>
     /// The repository this pull request is for.
@@ -170,7 +170,7 @@ public sealed class PullRequest
     /// <summary>
     /// The priority of the pull request, higher priority is merged first.
     /// </summary>
-    public required int Priority { get; set; } = 0;
+    public int Priority { get; set; } = 0;
 
     /// <summary>
     /// The CI information associated with the pull request.
@@ -178,7 +178,7 @@ public sealed class PullRequest
     public EnqueuedPullRequest? CiInfo { get; set; }
 }
 
-public sealed class EnqueuedPullRequest
+public sealed record EnqueuedPullRequest
 {
     /// <summary>
     /// The associated pull request ID.
