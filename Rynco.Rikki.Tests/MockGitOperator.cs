@@ -311,10 +311,10 @@ public class MockGitOperator : IGitOperator<MockRepo, MockBranch, MockCommitId>
         return new ValueTask<bool>(mergedTree == null);
     }
 
-    public ValueTask CreateBranchAtCommitAsync(MockRepo repo, string branchName, MockCommitId commitId)
+    public ValueTask<MockBranch> CreateBranchAtCommitAsync(MockRepo repo, string branchName, MockCommitId commitId)
     {
         repo.CreateBranch(branchName, commitId);
-        return default;
+        return new ValueTask<MockBranch>(new MockBranch(branchName));
     }
 
     public ValueTask<MockBranch?> GetBranchAsync(MockRepo repo, string branchName)

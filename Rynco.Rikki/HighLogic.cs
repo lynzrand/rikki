@@ -184,9 +184,9 @@ where TCommitId : IEquatable<TCommitId>
         }
 
         // Create a temporary branch for the merge
-        var branchName = FormatTemporaryBranchName(pr.Number);
+        var tempBranchName = FormatTemporaryBranchName(pr.Number);
         var commitId = await gitOperator.GetBranchTipAsync(repo, gitSourceBranch);
-        await gitOperator.CreateBranchAtCommitAsync(repo, branchName, commitId);
+        var tempBranch = await gitOperator.CreateBranchAtCommitAsync(repo, tempBranchName, commitId);
         var resultCommit = await gitOperator.MergeBranchesAsync(
             repo,
             gitWorkingBranch,
@@ -200,7 +200,7 @@ where TCommitId : IEquatable<TCommitId>
 
         // Remove the temporary branch and fast forward the working branch
         await gitOperator.ResetBranchToCommitAsync(repo, gitWorkingBranch, resultCommit);
-        await gitOperator.RemoveBranchAsync(repo, gitSourceBranch);
+        await gitOperator.RemoveBranchAsync(repo, tempBranch);
 
         return resultCommit;
     }

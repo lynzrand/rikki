@@ -43,7 +43,7 @@ where TCommitId : IEquatable<TCommitId>
     /// <param name="repo"></param>
     /// <param name="branchName"></param>
     /// <param name="commitId"></param>
-    public ValueTask CreateBranchAtCommitAsync(TRepo repo, string branchName, TCommitId commitId);
+    public ValueTask<TBranch> CreateBranchAtCommitAsync(TRepo repo, string branchName, TCommitId commitId);
 
     /// <summary>
     /// Remove the given branch from the repository.

@@ -9,7 +9,7 @@ public class LibGit2Operator : IGitOperator<Repository, Branch, ObjectId>
         throw new NotImplementedException();
     }
 
-    public ValueTask CreateBranchAtCommitAsync(Repository repo, string branchName, ObjectId commitId)
+    public ValueTask<Branch> CreateBranchAtCommitAsync(Repository repo, string branchName, ObjectId commitId)
     {
         throw new NotImplementedException();
     }
