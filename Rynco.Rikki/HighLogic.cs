@@ -153,7 +153,7 @@ where TCommitId : IEquatable<TCommitId>
             ?? throw new InvalidOperationException($"Branch {sourceBranch} not found in repo {uri}");
         var gitWorkingBranch = await gitOperator.GetBranchAsync(repo, workingBranch)
             ?? throw new InvalidOperationException($"Branch {workingBranch} not found in repo {uri}");
-        var hasConflict = await gitOperator.CheckForMergeConflictAsync(gitWorkingBranch, gitSourceBranch);
+        var hasConflict = await gitOperator.CheckForMergeConflictAsync(repo, gitWorkingBranch, gitSourceBranch);
         if (hasConflict)
         {
             throw new FailedToMergeException(FailedToMergeException.ReasonKind.MergeConflict);
@@ -164,6 +164,7 @@ where TCommitId : IEquatable<TCommitId>
         var commitId = await gitOperator.GetBranchTipAsync(repo, gitSourceBranch);
         await gitOperator.CreateBranchAtCommitAsync(repo, branchName, commitId);
         var resultCommit = await gitOperator.MergeBranchesAsync(
+            repo,
             gitWorkingBranch,
             gitSourceBranch,
             FormatCommitMessage(sourceBranch, workingBranch, pr.Number),
@@ -216,7 +217,7 @@ where TCommitId : IEquatable<TCommitId>
         // Reset the working branch to the base commit
         var workingBranch = await gitOperator.GetBranchAsync(repo, mq.WorkingBranch)
             ?? throw new InvalidOperationException($"Branch {mq.WorkingBranch} not found in repo {uri}");
-        await gitOperator.ResetBranchToCommitAsync(workingBranch, baseCommit);
+        await gitOperator.ResetBranchToCommitAsync(repo, workingBranch, baseCommit);
 
         // Add PRs to the working branch
         int seqNum = rebuildAfter?.CiInfo?.SequenceNumber + 1 ?? mq.HeadSequenceNumber;
@@ -327,7 +328,7 @@ where TCommitId : IEquatable<TCommitId>
         var targetBranch = await gitOperator.GetBranchAsync(repo, mq.TargetBranch)
             ?? throw new InvalidOperationException($"Branch {mq.TargetBranch} not found in repo {repoUri}");
         var commitId = gitOperator.ParseCommitId(lastCommit);
-        await gitOperator.ResetBranchToCommitAsync(targetBranch, commitId);
+        await gitOperator.ResetBranchToCommitAsync(repo, targetBranch, commitId);
 
         await gitOperator.PushBranchAsync(repo, targetBranch);
 

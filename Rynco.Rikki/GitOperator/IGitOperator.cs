@@ -56,12 +56,12 @@ where TCommitId : IEquatable<TCommitId>
     /// </summary>
     /// <param name="branch"></param>
     /// <param name="commitId"></param>
-    public ValueTask ResetBranchToCommitAsync(TBranch branch, TCommitId commitId);
+    public ValueTask ResetBranchToCommitAsync(TRepo repo, TBranch branch, TCommitId commitId);
 
     /// <summary>
     /// Check if the source branch can be merged into the target branch without any conflicts.
     /// </summary>
-    public ValueTask<bool> CheckForMergeConflictAsync(TBranch targetBranch, TBranch sourceBranch);
+    public ValueTask<bool> CheckForMergeConflictAsync(TRepo repo, TBranch targetBranch, TBranch sourceBranch);
 
     /// <summary>
     /// Merge the source branch into the target branch, creating a merge commit, and then
@@ -70,7 +70,7 @@ where TCommitId : IEquatable<TCommitId>
     /// <param name="targetBranch"></param>
     /// <param name="commitId"></param>
     /// <returns></returns>
-    public ValueTask<TCommitId?> MergeBranchesAsync(TBranch targetBranch, TBranch sourceBranch, string commitMessage, CommitterInfo committerInfo);
+    public ValueTask<TCommitId?> MergeBranchesAsync(TRepo repo, TBranch targetBranch, TBranch sourceBranch, string commitMessage, CommitterInfo committerInfo);
 
     /// <summary>
     /// Rebase the source branch onto the target branch, and then return the ID of the new commit.
@@ -79,7 +79,7 @@ where TCommitId : IEquatable<TCommitId>
     /// <param name="targetBranch"></param>
     /// <param name="sourceBranch"></param>
     /// <returns></returns>
-    public ValueTask<TCommitId?> RebaseBranchesAsync(TBranch targetBranch, TBranch sourceBranch);
+    public ValueTask<TCommitId?> RebaseBranchesAsync(TRepo repo, TBranch targetBranch, TBranch sourceBranch);
 
     /// <summary>
     /// Push everything in the repository to the remote.
@@ -95,6 +95,7 @@ where TCommitId : IEquatable<TCommitId>
     public ValueTask PushBranchAsync(TRepo repo, TBranch branch);
 
     public async ValueTask<TCommitId?> PerformMergeAsync(
+        TRepo repo,
         MergeStyle style,
         TBranch targetBranch,
         TBranch sourceBranch,
@@ -104,19 +105,19 @@ where TCommitId : IEquatable<TCommitId>
         switch (style)
         {
             case MergeStyle.Merge:
-                return await MergeBranchesAsync(targetBranch, sourceBranch, commitMessage, committerInfo);
+                return await MergeBranchesAsync(repo, targetBranch, sourceBranch, commitMessage, committerInfo);
             case MergeStyle.Linear:
-                return await RebaseBranchesAsync(targetBranch, sourceBranch);
+                return await RebaseBranchesAsync(repo, targetBranch, sourceBranch);
             case MergeStyle.SemiLinear:
                 {
                     // First rebase the source branch onto the target branch,
                     // then merge the source branch into the target branch.
-                    var newCommitId = await RebaseBranchesAsync(targetBranch, sourceBranch);
+                    var newCommitId = await RebaseBranchesAsync(repo, targetBranch, sourceBranch);
                     if (newCommitId == null)
                     {
                         return default;
                     }
-                    return await MergeBranchesAsync(targetBranch, sourceBranch, commitMessage, committerInfo);
+                    return await MergeBranchesAsync(repo, targetBranch, sourceBranch, commitMessage, committerInfo);
                 }
             default:
                 throw new ArgumentOutOfRangeException(nameof(style));
