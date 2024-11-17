@@ -68,8 +68,7 @@ public sealed class RikkiDbContext : DbContext
             .HasIndex(nameof(EnqueuedPullRequest.SequenceNumber));
     }
 
-    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    public RikkiDbContext(DbContextOptions<RikkiDbContext> options) : base(options)
     {
-
     }
 }
