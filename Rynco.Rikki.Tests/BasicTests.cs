@@ -64,29 +64,24 @@ public class BasicTests
         highLogic = new HighLogic<MockRepo, MockBranch, MockCommitId>(this.db, mockGitOperator, mockVcsHost);
     }
 
+
+    /// <summary>
+    /// The simplest merge scenario: a PR is created and merged into the target branch.
+    /// </summary>
+    /// <returns></returns>
     [Test]
-    public async Task Test1()
+    public async Task PlainMerge()
     {
         var repo = await mockGitOperator.OpenAndUpdateAsync(mockRepoName);
-
-        Console.WriteLine("Initial state:");
-        Console.WriteLine(repo);
+        var workingRepo = new MockCheckoutedRepo(repo, "master");
 
         // Add a feature branch with some commits
-        var targetBranch = await mockGitOperator.GetBranchAsync(repo, mockTargetBranch);
-        Assert.That(targetBranch, Is.Not.Null);
-        var tip = await mockGitOperator.GetBranchTipAsync(repo, targetBranch!);
-        Assert.That(tip, Is.Not.Null);
-        var commit = repo.GetCommit(tip);
-        var oldTree = commit.Tree;
-        var newTree = oldTree.Add("file2.txt", "Hello, world!");
+        workingRepo.Checkout("feature", true);
+        workingRepo.SetFile("file2.txt", "Hello, world!");
+        var featureCommit = workingRepo.Commit("Add file2.txt", mockCommitter);
 
-        const string commitMsg = "Add file2.txt";
-        var newCommit = repo.CreateCommit(new MockCommit(commitMsg, mockCommitter, [tip], newTree));
-        await mockGitOperator.CreateBranchAtCommitAsync(repo, "feature", newCommit);
-
-        Console.WriteLine("Repo after feature branch added:");
-        Console.WriteLine(repo);
+        var targetBranch = repo.GetBranch(mockTargetBranch)!;
+        var originalMasterTip = await mockGitOperator.GetBranchTipAsync(repo, targetBranch);
 
         // Create a PR and add it to merge queue
         await highLogic.OnPrAdded(mockRepoName, 1, 0, "feature", "master");
@@ -94,17 +89,12 @@ public class BasicTests
         await highLogic.OnRequestToAddToMergeQueue(mockRepoName, 1, mockCommitter);
 
         // Now the PR should be merged into the working branch
-        Console.WriteLine("Repo after PR added to merge queue:");
-        Console.WriteLine(repo);
-
         var workingBranch = await mockGitOperator.GetBranchAsync(repo, mockWorkingBranch);
-        Assert.That(workingBranch, Is.Not.Null);
         var workingBranchTip = await mockGitOperator.GetBranchTipAsync(repo, workingBranch!);
-        Assert.That(workingBranchTip, Is.Not.Null);
         var workingBranchCommit = repo.GetCommit(workingBranchTip);
-        Assert.That(workingBranchCommit.ParentIds.Count, Is.EqualTo(2), "Should be a merge commit");
-        Assert.That(workingBranchCommit.ParentIds, Contains.Item((int)newCommit));
-        Assert.That(workingBranchCommit.ParentIds, Contains.Item((int)tip));
+
+        Assert.That(workingBranchCommit.ParentIds,
+            Is.EqualTo(new List<int> { originalMasterTip.Id, featureCommit.Id }));
 
         // Mock CI passed message
         await highLogic.OnCiCreate(mockRepoName, 100, mockGitOperator.FormatCommitId(workingBranchTip));
@@ -112,10 +102,115 @@ public class BasicTests
         await highLogic.OnCiFinish(mockRepoName, 100, true);
 
         // Now the PR should be merged into the target branch
-        Console.WriteLine("Repo after PR merged into target branch:");
-        Console.WriteLine(repo);
+        var afterTargetBranchTip = await mockGitOperator.GetBranchTipAsync(repo, targetBranch);
 
-        var afterTargetBranchTip = await mockGitOperator.GetBranchTipAsync(repo, targetBranch!);
         Assert.That(afterTargetBranchTip, Is.EqualTo(workingBranchTip));
+    }
+
+    /// <summary>
+    /// Merge conflict scenario: two PRs are created and added to the merge queue, but the second PR
+    /// cannot be merged because of a conflict.
+    /// </summary>
+    /// <returns></returns>
+    [Test]
+    public async Task PlainMergeConflict()
+    {
+        var repo = await mockGitOperator.OpenAndUpdateAsync(mockRepoName);
+        var workingRepo = new MockCheckoutedRepo(repo, "master");
+
+        // Add two feature branches with conflicting commits
+        workingRepo.Checkout("feature1", true);
+        workingRepo.SetFile("file1.txt", "No I'm not going to say hello!");
+        var featureCommit = workingRepo.Commit("Change file1.txt", mockCommitter);
+
+        workingRepo.Checkout("master");
+        workingRepo.Checkout("feature2", true);
+        workingRepo.SetFile("file1.txt", "Hello world it's my go!!!!!");
+        var featureCommit2 = workingRepo.Commit("Change file1.txt in feature branch 2", mockCommitter);
+
+        var targetBranch = repo.GetBranch(mockTargetBranch)!;
+
+        // Add branch1 to merge queue
+        await highLogic.OnPrAdded(mockRepoName, 1, 0, "feature1", "master");
+        mockVcsHost.SetCiStatus(mockRepoName, 1, VcsHostService.CIStatus.Passed);
+        await highLogic.OnRequestToAddToMergeQueue(mockRepoName, 1, mockCommitter);
+
+        // Add branch2 to merge queue, should fail
+        await highLogic.OnPrAdded(mockRepoName, 2, 0, "feature2", "master");
+        mockVcsHost.SetCiStatus(mockRepoName, 2, VcsHostService.CIStatus.Passed);
+        Assert.ThrowsAsync(typeof(FailedToMergeException),
+            () => highLogic.OnRequestToAddToMergeQueue(mockRepoName, 2, mockCommitter)
+        );
+    }
+
+    [Test]
+    public async Task OneFailure()
+    {
+        var repo = await mockGitOperator.OpenAndUpdateAsync(mockRepoName);
+        var workingRepo = new MockCheckoutedRepo(repo, "master");
+
+        // Add a feature branch with some commits
+        workingRepo.Checkout("feature", true);
+        workingRepo.SetFile("file2.txt", "Hello, world!");
+        var featureCommit = workingRepo.Commit("Add file2.txt", mockCommitter);
+
+        var targetBranch = repo.GetBranch(mockTargetBranch)!;
+
+        // Create a PR and add it to merge queue
+        await highLogic.OnPrAdded(mockRepoName, 1, 0, "feature", "master");
+        mockVcsHost.SetCiStatus(mockRepoName, 1, VcsHostService.CIStatus.Passed);
+        await highLogic.OnRequestToAddToMergeQueue(mockRepoName, 1, mockCommitter);
+
+        var workingBranch = await mockGitOperator.GetBranchAsync(repo, mockWorkingBranch);
+        var workingBranchTip = await mockGitOperator.GetBranchTipAsync(repo, workingBranch!);
+
+        // But the subsequent CI failed
+        await highLogic.OnCiCreate(mockRepoName, 100, mockGitOperator.FormatCommitId(workingBranchTip));
+        await highLogic.OnCiFinish(mockRepoName, 100, false);
+
+        // The PR should be removed from the merge queue
+        var dbRepo = await db.GetRepoByUrl(mockRepoName);
+        var pr = await db.GetPrByRepoAndNumber(dbRepo.Id, 1);
+        Assert.That(pr.CiInfo, Is.Null);
+    }
+
+    [Test]
+    public async Task OneFailureWhenTwoPrs()
+    {
+        var repo = await mockGitOperator.OpenAndUpdateAsync(mockRepoName);
+        var workingRepo = new MockCheckoutedRepo(repo, "master");
+
+        // Add a feature branch with some commits
+        workingRepo.Checkout("feature", true);
+        workingRepo.SetFile("file2.txt", "Hello, world!");
+        var featureCommit = workingRepo.Commit("Add file2.txt", mockCommitter);
+
+        var targetBranch = repo.GetBranch(mockTargetBranch)!;
+
+        // Create a PR and add it to merge queue
+        await highLogic.OnPrAdded(mockRepoName, 1, 0, "feature", "master");
+        mockVcsHost.SetCiStatus(mockRepoName, 1, VcsHostService.CIStatus.Passed);
+        await highLogic.OnRequestToAddToMergeQueue(mockRepoName, 1, mockCommitter);
+
+        var workingBranch = await mockGitOperator.GetBranchAsync(repo, mockWorkingBranch);
+        var workingBranchTip1 = await mockGitOperator.GetBranchTipAsync(repo, workingBranch!);
+
+        // Add another PR
+        workingRepo.Checkout("feature2", true);
+        workingRepo.SetFile("file3.txt", "Hello, world!");
+        var featureCommit2 = workingRepo.Commit("Add file3.txt", mockCommitter);
+
+        await highLogic.OnPrAdded(mockRepoName, 2, 0, "feature2", "master");
+        mockVcsHost.SetCiStatus(mockRepoName, 2, VcsHostService.CIStatus.Passed);
+        await highLogic.OnRequestToAddToMergeQueue(mockRepoName, 2, mockCommitter);
+
+        // But the subsequent CI failed
+        await highLogic.OnCiCreate(mockRepoName, 100, mockGitOperator.FormatCommitId(workingBranchTip1));
+        await highLogic.OnCiFinish(mockRepoName, 100, false);
+
+        // The PR should be removed from the merge queue
+        var dbRepo = await db.GetRepoByUrl(mockRepoName);
+        var pr = await db.GetPrByRepoAndNumber(dbRepo.Id, 1);
+        Assert.That(pr.CiInfo, Is.Null);
     }
 }

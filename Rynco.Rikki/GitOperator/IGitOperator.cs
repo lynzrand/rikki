@@ -46,6 +46,14 @@ where TCommitId : IEquatable<TCommitId>
     public ValueTask<TBranch> CreateBranchAtCommitAsync(TRepo repo, string branchName, TCommitId commitId);
 
     /// <summary>
+    /// Get the commit message and committer info of the given commit.
+    /// </summary>
+    /// <param name="repo"></param>
+    /// <param name="commitId"></param>
+    /// <returns></returns>
+    public ValueTask<(string, CommitterInfo)> GetCommitInfoAsync(TRepo repo, TCommitId commitId);
+
+    /// <summary>
     /// Remove the given branch from the repository.
     /// </summary>
     /// <param name="branch"></param>

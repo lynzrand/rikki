@@ -23,6 +23,8 @@ public class HighDb(RikkiDbContext db)
         db.Add(pr);
     }
 
+    public Task<PullRequest> GetPrById(int id) => db.PullRequests.FirstAsync(pr => pr.Id == id);
+
     public Task<Repo> GetRepoByUrl(string url) => db.Repos.FirstAsync(r => r.Url == url);
 
     public Task<PullRequest> GetPrByRepoAndNumber(int repoId, int number) =>

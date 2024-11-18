@@ -1,3 +1,4 @@
+using System.Net;
 using Microsoft.EntityFrameworkCore;
 using Rynco.Rikki.Db;
 using Rynco.Rikki.GitOperator;
@@ -146,7 +147,7 @@ where TCommitId : IEquatable<TCommitId>
             // Now we need to rebuild the merge queue from the PR at insertIndex.
             var prsToAdd = prs.Skip(insertIndex).Prepend(pr).ToArray();
             var rebuildAfter = insertIndex == 0 ? null : prs[insertIndex - 1];
-            var rebuildResult = await RebuildMergeQueue(uri, repo, rebuildAfter, prsToAdd, mq, info);
+            var rebuildResult = await RebuildMergeQueue(uri, repo, rebuildAfter, prsToAdd, mq);
             // TODO: There's a list of failed PRs here. We should notify the user about them.
 
         }
@@ -224,8 +225,7 @@ where TCommitId : IEquatable<TCommitId>
         TRepo repo,
         PullRequest? rebuildAfter,
         ReadOnlyMemory<PullRequest> prsToAdd,
-        MergeQueue mq,
-        CommitterInfo info)
+        MergeQueue mq)
     {
         TCommitId baseCommit;
 
@@ -255,7 +255,11 @@ where TCommitId : IEquatable<TCommitId>
             var pr = prsToAdd.Span[i];
             try
             {
-                var sha = await PutPrToTailOfMergeQueue(uri, repo, pr, mq, info);
+                // Get the original commit message and committer info from the original merge commit
+                var lastCommit = pr.CiInfo?.MqCommit
+                    ?? throw new InvalidOperationException("The PR doesn't have a merge commit SHA.");
+                var (commitMessage, commitInfo) = await gitOperator.GetCommitInfoAsync(repo, gitOperator.ParseCommitId(lastCommit));
+                var sha = await PutPrToTailOfMergeQueue(uri, repo, pr, mq, commitInfo);
                 var ciInfo = new EnqueuedPullRequest
                 {
                     PullRequestId = pr.Id,
@@ -328,7 +332,30 @@ where TCommitId : IEquatable<TCommitId>
             var mq = await db.GetMergeQueueAssociatedWithCi(ciInfo.PullRequestId);
             await DequeueFinishedPrs(repo, mq);
         }
+        else
+        {
+            // CI failed. Remove this PR from the merge queue, and rebuild the rest of the queue.
+            var pr = await db.GetPrById(ciInfo.PullRequestId);
+            var mq = await db.GetMergeQueueById(pr.MergeQueueId);
 
+            // Rebuild the merge queue
+            var enqueuedPrs = await db.GetPrsInMergeQueue(mq);
+            var prPos = enqueuedPrs.FindIndex(p => p.Id == pr.Id);
+            var prsToRebuild = enqueuedPrs.Skip(prPos).ToArray();
+
+            PullRequest? rebuildAfter = null;
+            if (prPos > 0)
+            {
+                rebuildAfter = enqueuedPrs[prPos - 1];
+            }
+            var gitRepo = await gitOperator.OpenAndUpdateAsync(repo);
+            var rebuildResult = await RebuildMergeQueue(repo, gitRepo, rebuildAfter, prsToRebuild, mq);
+
+            pr.CiInfo = null;
+            db.DbContext.Remove(ciInfo);
+        }
+
+        await db.SaveChanges();
         await txn.CommitAsync();
     }
 

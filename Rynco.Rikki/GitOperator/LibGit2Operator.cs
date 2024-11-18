@@ -29,6 +29,11 @@ public class LibGit2Operator : IGitOperator<Repository, Branch, ObjectId>
         throw new NotImplementedException();
     }
 
+    public ValueTask<(string, CommitterInfo)> GetCommitInfoAsync(Repository repo, ObjectId commitId)
+    {
+        throw new NotImplementedException();
+    }
+
     public ValueTask<ObjectId?> MergeBranchesAsync(Repository repo, Branch targetBranch, Branch sourceBranch, string commitMessage, CommitterInfo committerInfo)
     {
         throw new NotImplementedException();

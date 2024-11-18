@@ -1,8 +1,5 @@
 using System.Collections.Immutable;
 using System.Text;
-using Microsoft.Extensions.Logging;
-using NUnit.Framework.Constraints;
-using Rynco.Rikki.GitOperator;
 
 namespace Rynco.Rikki.Tests;
 
@@ -154,11 +151,7 @@ public class MockRepo(string name)
         }
 
         // Merge the diffs
-        var mergedTree = treeLca.ToBuilder();
-        foreach (var path in diffA)
-        {
-            mergedTree[path] = treeA[path];
-        }
+        var mergedTree = treeA.ToBuilder();
         foreach (var path in diffB)
         {
             mergedTree[path] = treeB[path];
@@ -261,7 +254,8 @@ public record MockCommit(
     string Message,
     CommitterInfo CommitterInfo,
     List<int> ParentIds,
-    ImmutableDictionary<string, string> Tree);
+    MockTree Tree,
+    MockCommitId? RebaseSource = null);
 
 public record MockBranch(string Name);
 
@@ -271,119 +265,121 @@ public record MockCommitId(int Id)
     public static implicit operator int(MockCommitId id) => id.Id;
 }
 
-/// <summary>
-/// A simple mock implementation of <see cref="IGitOperator{TRepo, TBranch, TCommitId}"/>.
-/// </summary>
-public class MockGitOperator : IGitOperator<MockRepo, MockBranch, MockCommitId>
+public class MockCheckoutedRepo
 {
-    ILogger<MockGitOperator>? logger;
+    MockTree tree;
+    readonly MockRepo repo;
+    string? headBranch = null;
+    int? headCommit = null;
 
-    public MockGitOperator(ILogger<MockGitOperator>? logger = null)
+    public MockTree Tree => tree;
+    public MockBranch? HeadBranch => headBranch == null ? null : new MockBranch(headBranch);
+    public MockCommitId? Head => headCommit;
+
+    public MockCheckoutedRepo(MockRepo repo)
     {
-        this.logger = logger;
+        this.repo = repo;
+        this.headBranch = null;
+        this.headCommit = null;
+        this.tree = MockTree.Empty;
     }
 
-    private Dictionary<string, MockRepo> repos = [];
-
-    public MockRepo CreateRepository(string uri)
+    public MockCheckoutedRepo(MockRepo repo, string branch)
     {
-        var repo = new MockRepo(uri);
-        repos.Add(uri, repo);
-        return repo;
+        this.repo = repo;
+        this.headBranch = branch;
+        this.headCommit = repo.Branches[branch];
+        this.tree = repo.Commits[headCommit.Value].Tree;
     }
 
-    public string FormatCommitId(MockCommitId commitId)
+    public void Checkout(string branch, bool create = false)
     {
-        return commitId.Id.ToString();
-    }
-
-    public MockCommitId ParseCommitId(string commitId)
-    {
-        return new MockCommitId(int.Parse(commitId));
-    }
-
-    public ValueTask<bool> CheckForMergeConflictAsync(MockRepo repo, MockBranch targetBranch, MockBranch sourceBranch)
-    {
-        // get result safety: no async in the method, so no blocking
-        var targetCommit = GetBranchTipAsync(repo, targetBranch).Result;
-        var sourceCommit = GetBranchTipAsync(repo, sourceBranch).Result;
-        var mergedTree = repo.TryMergeTrees(targetCommit, sourceCommit);
-        return new ValueTask<bool>(mergedTree == null);
-    }
-
-    public ValueTask<MockBranch> CreateBranchAtCommitAsync(MockRepo repo, string branchName, MockCommitId commitId)
-    {
-        repo.CreateBranch(branchName, commitId);
-        return new ValueTask<MockBranch>(new MockBranch(branchName));
-    }
-
-    public ValueTask<MockBranch?> GetBranchAsync(MockRepo repo, string branchName)
-    {
-        return new ValueTask<MockBranch?>(repo.GetBranch(branchName));
-    }
-
-    public ValueTask<MockCommitId> GetBranchTipAsync(MockRepo repo, MockBranch branch)
-    {
-        return new ValueTask<MockCommitId>(new MockCommitId(repo.Branches[branch.Name]));
-    }
-
-    public ValueTask<MockCommitId?> MergeBranchesAsync(MockRepo repo, MockBranch targetBranch, MockBranch sourceBranch, string commitMessage, CommitterInfo committerInfo)
-    {
-        var targetCommit = GetBranchTipAsync(repo, targetBranch).Result;
-        var sourceCommit = GetBranchTipAsync(repo, sourceBranch).Result;
-        var mergedTree = repo.TryMergeTrees(targetCommit, sourceCommit);
-        if (mergedTree == null)
+        if (create)
         {
-            return ValueTask.FromResult<MockCommitId?>(null);
+            if (repo.Branches.ContainsKey(branch))
+            {
+                throw new Exception("Branch already exists");
+            }
+            if (headCommit == null)
+            {
+                throw new Exception("No commit to create branch from");
+            }
+            repo.CreateBranch(branch, headCommit.Value);
+            headBranch = branch;
         }
-
-        var newCommit = repo.CreateCommit(new MockCommit(commitMessage, committerInfo, new() { targetCommit.Id, sourceCommit.Id }, mergedTree));
-        return new ValueTask<MockCommitId?>(new MockCommitId(newCommit.Id));
-    }
-
-    public ValueTask<MockRepo> OpenAndUpdateAsync(string uri)
-    {
-        if (repos.TryGetValue(uri, out var repo))
+        else
         {
-            return new ValueTask<MockRepo>(repo);
+            if (!repo.Branches.ContainsKey(branch) && !create)
+            {
+                throw new Exception("Branch not found");
+            }
+            headBranch = branch;
+            headCommit = repo.Branches[branch];
+            tree = repo.Commits[headCommit.Value].Tree;
         }
-        throw new Exception("Repo not found");
     }
 
-    public ValueTask PushBranchAsync(MockRepo repo, MockBranch branch)
+    public void SetFile(string path, string content)
     {
-        // noop
-        return default;
+        tree = tree.SetItem(path, content);
     }
 
-    public ValueTask PushRepoStateAsync(MockRepo repo)
+    public void RemoveFile(string path)
     {
-        // noop
-        return default;
+        tree = tree.Remove(path);
     }
 
-    public ValueTask<MockCommitId?> RebaseBranchesAsync(MockRepo repo, MockBranch targetBranch, MockBranch sourceBranch)
+    public MockCommitId Commit(string message, CommitterInfo committerInfo)
     {
-        var targetCommit = GetBranchTipAsync(repo, targetBranch).Result;
-        var sourceCommit = GetBranchTipAsync(repo, sourceBranch).Result;
-        var baseCommit = repo.FindLCAs(targetCommit, sourceCommit).First();
-        var newCommit = repo.TryRebaseCommits(targetCommit, sourceCommit, baseCommit);
-        if (newCommit == null)
+        if (headCommit == null)
         {
-            return ValueTask.FromResult<MockCommitId?>(null);
+            // Empty repository
+            headCommit = repo.CreateCommit(new MockCommit(message, committerInfo, [], tree));
+            if (headBranch != null)
+            {
+                repo.Branches[headBranch] = headCommit.Value;
+            }
+            else
+            {
+                repo.CreateBranch("master", headCommit.Value);
+            }
         }
-        return new ValueTask<MockCommitId?>(new MockCommitId(newCommit.Id));
+        else
+        {
+            headCommit = repo.CreateCommit(new MockCommit(message, committerInfo, [headCommit.Value], tree));
+            if (headBranch != null)
+            {
+                repo.Branches[headBranch] = headCommit.Value;
+            }
+        }
+        return headCommit;
     }
 
-    public ValueTask RemoveBranchAsync(MockRepo repo, MockBranch branch)
+    public bool RepoDirty()
     {
-        repo.RemoveBranch(branch.Name);
-        return default;
+        if (headCommit == null)
+        {
+            return tree.IsEmpty;
+        }
+        else
+        {
+            return repo.Commits[headCommit.Value].Tree != tree;
+        }
     }
 
-    public ValueTask ResetBranchToCommitAsync(MockRepo repo, MockBranch branch, MockCommitId commitId)
+    public void Pull()
     {
-        repo.Branches[branch.Name] = commitId.Id;
-        return default;
+        if (headBranch == null)
+        {
+            throw new Exception("No branch checked out");
+        }
+        if (RepoDirty())
+        {
+            throw new Exception("Working tree is dirty");
+        }
+        var targetCommitId = repo.Branches[headBranch];
+        var targetCommit = repo.Commits[targetCommitId];
+        tree = targetCommit.Tree;
+        headCommit = targetCommitId;
     }
 }
