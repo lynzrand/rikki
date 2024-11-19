@@ -4,34 +4,89 @@ namespace Rynco.Rikki.GitOperator;
 
 public class LibGit2Operator : IGitOperator<Repository, Branch, ObjectId>
 {
+    readonly string rootPath;
+    readonly LibGit2Sharp.Handlers.CredentialsHandler credentialsHandler;
+
+    public LibGit2Operator(string rootPath, LibGit2Sharp.Handlers.CredentialsHandler credentialsHandler)
+    {
+        this.rootPath = rootPath;
+        this.credentialsHandler = credentialsHandler;
+    }
+
+    string FormatPath(string repoUri)
+    {
+        var uri = new Uri(repoUri);
+        var host = uri.Host;
+        var path = uri.AbsolutePath;
+        // Strip the leading slash and trailing extension.
+        path = path.TrimStart('/');
+        path = Path.ChangeExtension(path, null);
+
+        // We want the path to have exactly two segments here.
+        var parts = path.Split("/");
+        string normalizedPath;
+        if (parts.Length == 0)
+        {
+            normalizedPath = Path.Combine("_", "_");
+        }
+        else if (parts.Length == 1)
+        {
+            normalizedPath = Path.Combine("_", parts[0]);
+        }
+        else
+        {
+            var normPart0 = parts[0].StartsWith('_') ? parts[0] : ("_" + parts[0]);
+            var normPart1 = string.Join("_", parts.Skip(1));
+            normalizedPath = Path.Combine(normPart0, normPart1);
+        }
+
+        return Path.Combine(rootPath, host, normalizedPath);
+    }
+
     public ValueTask<bool> CheckForMergeConflictAsync(Repository repo, Branch targetBranch, Branch sourceBranch)
     {
         throw new NotImplementedException();
     }
 
-    public ValueTask<Branch> CreateBranchAtCommitAsync(Repository repo, string branchName, ObjectId commitId)
+    public async ValueTask<Branch> CreateBranchAtCommitAsync(Repository repo, string branchName, ObjectId commitId)
     {
-        throw new NotImplementedException();
+        return await Task.Run(() =>
+        {
+            var commit = repo.Lookup<Commit>(commitId);
+            return repo.CreateBranch(branchName, commit);
+        });
     }
 
     public string FormatCommitId(ObjectId commitId)
     {
-        throw new NotImplementedException();
+        return commitId.Sha;
+    }
+
+    public ObjectId ParseCommitId(string commitId)
+    {
+        return new ObjectId(commitId);
     }
 
     public ValueTask<Branch?> GetBranchAsync(Repository repo, string branchName)
     {
-        throw new NotImplementedException();
+        return new ValueTask<Branch?>(Task.Run(() =>
+        {
+            return (Branch?)repo.Branches[branchName]; // This call might return null
+        }));
     }
 
     public ValueTask<ObjectId> GetBranchTipAsync(Repository repo, Branch branch)
     {
-        throw new NotImplementedException();
+        return ValueTask.FromResult(branch.Tip.Id);
     }
 
     public ValueTask<(string, CommitterInfo)> GetCommitInfoAsync(Repository repo, ObjectId commitId)
     {
-        throw new NotImplementedException();
+        return new ValueTask<(string, CommitterInfo)>(Task.Run(() =>
+        {
+            var commit = repo.Lookup<Commit>(commitId);
+            return (commit.Message, new CommitterInfo(commit.Committer.Name, commit.Committer.Email));
+        }));
     }
 
     public ValueTask<ObjectId?> MergeBranchesAsync(Repository repo, Branch targetBranch, Branch sourceBranch, string commitMessage, CommitterInfo committerInfo)
@@ -41,22 +96,58 @@ public class LibGit2Operator : IGitOperator<Repository, Branch, ObjectId>
 
     public ValueTask<Repository> OpenAndUpdateAsync(string uri)
     {
-        throw new NotImplementedException();
-    }
-
-    public ObjectId ParseCommitId(string commitId)
-    {
-        throw new NotImplementedException();
+        var path = FormatPath(uri);
+        return new ValueTask<Repository>(Task.Run(() =>
+        {
+            Repository repo;
+            if (Path.Exists(path))
+            {
+                repo = new Repository(path);
+            }
+            else
+            {
+                // Create the directory if it doesn't exist.
+                Directory.CreateDirectory(path);
+                // Create a bare repository.
+                repo = new Repository(Repository.Init(path, true));
+                // Add remote 'origin' with the given uri.
+                repo.Network.Remotes.Add("origin", uri);
+            }
+            // Pull from the remote.
+            var origin = repo.Network.Remotes["origin"];
+            var refspecs = origin.FetchRefSpecs.Select(r => r.Specification);
+            repo.Network.Fetch("origin", refspecs, new FetchOptions
+            {
+                CredentialsProvider = credentialsHandler
+            });
+            return repo;
+        }));
     }
 
     public ValueTask PushBranchAsync(Repository repo, Branch branch)
     {
-        throw new NotImplementedException();
+        return new ValueTask(Task.Run(() =>
+        {
+            var remote = repo.Network.Remotes["origin"];
+            repo.Network.Push(remote, branch.CanonicalName, new PushOptions
+            {
+                CredentialsProvider = credentialsHandler
+            });
+        }));
     }
 
     public ValueTask PushRepoStateAsync(Repository repo)
     {
-        throw new NotImplementedException();
+        // aka git push --mirror
+        return new ValueTask(Task.Run(() =>
+        {
+            var remote = repo.Network.Remotes["origin"];
+            var refspecs = remote.PushRefSpecs.Select(r => r.Specification);
+            repo.Network.Push(remote, refspecs, new PushOptions
+            {
+                CredentialsProvider = credentialsHandler
+            });
+        }));
     }
 
     public ValueTask<ObjectId?> RebaseBranchesAsync(Repository repo, Branch targetBranch, Branch sourceBranch)
@@ -66,11 +157,17 @@ public class LibGit2Operator : IGitOperator<Repository, Branch, ObjectId>
 
     public ValueTask RemoveBranchAsync(Repository repo, Branch branch)
     {
-        throw new NotImplementedException();
+        return new ValueTask(Task.Run(() =>
+        {
+            repo.Branches.Remove(branch);
+        }));
     }
 
     public ValueTask ResetBranchToCommitAsync(Repository repo, Branch branch, ObjectId commitId)
     {
-        throw new NotImplementedException();
+        return new ValueTask(Task.Run(() =>
+        {
+            repo.Refs.UpdateTarget(branch.Reference, commitId);
+        }));
     }
 }
