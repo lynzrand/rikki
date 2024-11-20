@@ -36,6 +36,8 @@ public class HighDb(RikkiDbContext db)
     public Task<MergeQueue> GetMergeQueueById(int id) =>
         db.MergeQueues.FirstAsync(mq => mq.Id == id);
 
+    public Task<Repo> GetRepoById(int id) => db.Repos.FirstAsync(r => r.Id == id);
+
     public async Task<PullRequest?> GetTailPrInMergeQueue(MergeQueue mq)
     {
         if (mq.TailSequenceNumber == mq.HeadSequenceNumber)

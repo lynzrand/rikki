@@ -69,7 +69,7 @@ where TCommitId : IEquatable<TCommitId>
     /// <summary>
     /// Check if the source branch can be merged into the target branch without any conflicts.
     /// </summary>
-    public ValueTask<bool> CheckForMergeConflictAsync(TRepo repo, TBranch targetBranch, TBranch sourceBranch);
+    public ValueTask<bool> CanMergeWithoutConflict(TRepo repo, TBranch targetBranch, TBranch sourceBranch);
 
     /// <summary>
     /// Merge the source branch into the target branch, creating a merge commit, and then
@@ -87,7 +87,7 @@ where TCommitId : IEquatable<TCommitId>
     /// <param name="targetBranch"></param>
     /// <param name="sourceBranch"></param>
     /// <returns></returns>
-    public ValueTask<TCommitId?> RebaseBranchesAsync(TRepo repo, TBranch targetBranch, TBranch sourceBranch);
+    public ValueTask<TCommitId?> RebaseBranchesAsync(TRepo repo, TBranch targetBranch, TBranch sourceBranch, CommitterInfo committerInfo);
 
     /// <summary>
     /// Push everything in the repository to the remote.
@@ -102,6 +102,19 @@ where TCommitId : IEquatable<TCommitId>
     /// <param name="branch"></param>
     public ValueTask PushBranchAsync(TRepo repo, TBranch branch);
 
+    /// <summary>
+    /// Perform a merge between the source branch and the target branch, using the given style.
+    /// This operation modifies the source branch. If you want to preserve the original branch,
+    /// use a temporary branch to perform the merge.
+    /// </summary>
+    /// <param name="repo"></param>
+    /// <param name="style"></param>
+    /// <param name="targetBranch"></param>
+    /// <param name="sourceBranch"></param>
+    /// <param name="commitMessage"></param>
+    /// <param name="committerInfo"></param>
+    /// <returns></returns>
+    /// <exception cref="ArgumentOutOfRangeException"></exception>
     public async ValueTask<TCommitId?> PerformMergeAsync(
         TRepo repo,
         MergeStyle style,
@@ -115,12 +128,12 @@ where TCommitId : IEquatable<TCommitId>
             case MergeStyle.Merge:
                 return await MergeBranchesAsync(repo, targetBranch, sourceBranch, commitMessage, committerInfo);
             case MergeStyle.Linear:
-                return await RebaseBranchesAsync(repo, targetBranch, sourceBranch);
+                return await RebaseBranchesAsync(repo, targetBranch, sourceBranch, committerInfo);
             case MergeStyle.SemiLinear:
                 {
                     // First rebase the source branch onto the target branch,
                     // then merge the source branch into the target branch.
-                    var newCommitId = await RebaseBranchesAsync(repo, targetBranch, sourceBranch);
+                    var newCommitId = await RebaseBranchesAsync(repo, targetBranch, sourceBranch, committerInfo);
                     if (newCommitId == null)
                     {
                         return default;

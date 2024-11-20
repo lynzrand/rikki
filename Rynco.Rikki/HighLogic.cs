@@ -85,7 +85,7 @@ where TCommitId : IEquatable<TCommitId>
         }
 
         // Try to add to merge queue
-        await AddToMergeQueue(uri, repo, dbPr, dbMq, info);
+        await AddToMergeQueue(uri, repo, dbPr, dbMq, info, dbRepo.MergeStyle);
 
         // Succeeded? Now commit the changes
         await db.SaveChanges();
@@ -104,7 +104,8 @@ where TCommitId : IEquatable<TCommitId>
         TRepo repo,
         PullRequest pr,
         MergeQueue mq,
-        CommitterInfo info)
+        CommitterInfo info,
+        MergeStyle mergeStyle)
     {
         // Check if the PR is already in the merge queue
         if (pr.CiInfo != null)
@@ -119,7 +120,7 @@ where TCommitId : IEquatable<TCommitId>
         if (canAddToTail)
         {
             // Simply add to the tail
-            var commit = await PutPrToTailOfMergeQueue(uri, repo, pr, mq, info);
+            var commit = await PutPrToTailOfMergeQueue(uri, repo, pr, mq, info, mergeStyle);
             var tailSeqNum = mq.TailSequenceNumber;
             mq.TailSequenceNumber++;
             pr.CiInfo = new EnqueuedPullRequest
@@ -147,7 +148,7 @@ where TCommitId : IEquatable<TCommitId>
             // Now we need to rebuild the merge queue from the PR at insertIndex.
             var prsToAdd = prs.Skip(insertIndex).Prepend(pr).ToArray();
             var rebuildAfter = insertIndex == 0 ? null : prs[insertIndex - 1];
-            var rebuildResult = await RebuildMergeQueue(uri, repo, rebuildAfter, prsToAdd, mq);
+            var rebuildResult = await RebuildMergeQueue(uri, repo, rebuildAfter, prsToAdd, mq, mergeStyle);
             // TODO: There's a list of failed PRs here. We should notify the user about them.
 
         }
@@ -169,7 +170,8 @@ where TCommitId : IEquatable<TCommitId>
         TRepo repo,
         PullRequest pr,
         MergeQueue mq,
-        CommitterInfo info)
+        CommitterInfo info,
+        MergeStyle mergeStyle)
     {
         // Check for merge conflict
         var sourceBranch = pr.SourceBranch;
@@ -178,8 +180,8 @@ where TCommitId : IEquatable<TCommitId>
             ?? throw new InvalidOperationException($"Branch {sourceBranch} not found in repo {uri}");
         var gitWorkingBranch = await gitOperator.GetBranchAsync(repo, workingBranch)
             ?? throw new InvalidOperationException($"Branch {workingBranch} not found in repo {uri}");
-        var hasConflict = await gitOperator.CheckForMergeConflictAsync(repo, gitWorkingBranch, gitSourceBranch);
-        if (hasConflict)
+        var noConflict = await gitOperator.CanMergeWithoutConflict(repo, gitWorkingBranch, gitSourceBranch);
+        if (!noConflict)
         {
             throw new FailedToMergeException(FailedToMergeException.ReasonKind.MergeConflict);
         }
@@ -188,10 +190,11 @@ where TCommitId : IEquatable<TCommitId>
         var tempBranchName = FormatTemporaryBranchName(pr.Number);
         var commitId = await gitOperator.GetBranchTipAsync(repo, gitSourceBranch);
         var tempBranch = await gitOperator.CreateBranchAtCommitAsync(repo, tempBranchName, commitId);
-        var resultCommit = await gitOperator.MergeBranchesAsync(
+        var resultCommit = await gitOperator.PerformMergeAsync(
             repo,
+            mergeStyle,
             gitWorkingBranch,
-            gitSourceBranch,
+            tempBranch,
             FormatCommitMessage(sourceBranch, workingBranch, pr.Number),
             info);
         if (resultCommit == null)
@@ -225,7 +228,8 @@ where TCommitId : IEquatable<TCommitId>
         TRepo repo,
         PullRequest? rebuildAfter,
         ReadOnlyMemory<PullRequest> prsToAdd,
-        MergeQueue mq)
+        MergeQueue mq,
+        MergeStyle mergeStyle)
     {
         TCommitId baseCommit;
 
@@ -259,7 +263,7 @@ where TCommitId : IEquatable<TCommitId>
                 var lastCommit = pr.CiInfo?.MqCommit
                     ?? throw new InvalidOperationException("The PR doesn't have a merge commit SHA.");
                 var (commitMessage, commitInfo) = await gitOperator.GetCommitInfoAsync(repo, gitOperator.ParseCommitId(lastCommit));
-                var sha = await PutPrToTailOfMergeQueue(uri, repo, pr, mq, commitInfo);
+                var sha = await PutPrToTailOfMergeQueue(uri, repo, pr, mq, commitInfo, mergeStyle);
                 var ciInfo = new EnqueuedPullRequest
                 {
                     PullRequestId = pr.Id,
@@ -337,6 +341,7 @@ where TCommitId : IEquatable<TCommitId>
             // CI failed. Remove this PR from the merge queue, and rebuild the rest of the queue.
             var pr = await db.GetPrById(ciInfo.PullRequestId);
             var mq = await db.GetMergeQueueById(pr.MergeQueueId);
+            var dbRepo = await db.GetRepoById(mq.RepoId);
 
             // Rebuild the merge queue
             var enqueuedPrs = await db.GetPrsInMergeQueue(mq);
@@ -349,7 +354,7 @@ where TCommitId : IEquatable<TCommitId>
                 rebuildAfter = enqueuedPrs[prPos - 1];
             }
             var gitRepo = await gitOperator.OpenAndUpdateAsync(repo);
-            var rebuildResult = await RebuildMergeQueue(repo, gitRepo, rebuildAfter, prsToRebuild, mq);
+            var rebuildResult = await RebuildMergeQueue(repo, gitRepo, rebuildAfter, prsToRebuild, mq, dbRepo.MergeStyle);
 
             pr.CiInfo = null;
             db.DbContext.Remove(ciInfo);

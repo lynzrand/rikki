@@ -37,13 +37,13 @@ public class MockGitOperator : IGitOperator<MockRepo, MockBranch, MockCommitId>
         return new MockCommitId(int.Parse(commitId));
     }
 
-    public ValueTask<bool> CheckForMergeConflictAsync(MockRepo repo, MockBranch targetBranch, MockBranch sourceBranch)
+    public ValueTask<bool> CanMergeWithoutConflict(MockRepo repo, MockBranch targetBranch, MockBranch sourceBranch)
     {
         // get result safety: no async in the method, so no blocking
         var targetCommit = GetBranchTipAsync(repo, targetBranch).Result;
         var sourceCommit = GetBranchTipAsync(repo, sourceBranch).Result;
         var mergedTree = repo.TryMergeTrees(targetCommit, sourceCommit);
-        return new ValueTask<bool>(mergedTree == null);
+        return new ValueTask<bool>(mergedTree != null);
     }
 
     public ValueTask<MockBranch> CreateBranchAtCommitAsync(MockRepo repo, string branchName, MockCommitId commitId)

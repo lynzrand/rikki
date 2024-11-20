@@ -43,9 +43,12 @@ public class LibGit2Operator : IGitOperator<Repository, Branch, ObjectId>
         return Path.Combine(rootPath, host, normalizedPath);
     }
 
-    public ValueTask<bool> CheckForMergeConflictAsync(Repository repo, Branch targetBranch, Branch sourceBranch)
+    public ValueTask<bool> CanMergeWithoutConflict(Repository repo, Branch targetBranch, Branch sourceBranch)
     {
-        throw new NotImplementedException();
+        return new ValueTask<bool>(Task.Run(() =>
+        {
+            return repo.ObjectDatabase.CanMergeWithoutConflict(targetBranch.Tip, sourceBranch.Tip);
+        }));
     }
 
     public async ValueTask<Branch> CreateBranchAtCommitAsync(Repository repo, string branchName, ObjectId commitId)
@@ -91,7 +94,22 @@ public class LibGit2Operator : IGitOperator<Repository, Branch, ObjectId>
 
     public ValueTask<ObjectId?> MergeBranchesAsync(Repository repo, Branch targetBranch, Branch sourceBranch, string commitMessage, CommitterInfo committerInfo)
     {
-        throw new NotImplementedException();
+        return new ValueTask<ObjectId?>(Task.Run(() =>
+        {
+            var signature = new Signature(committerInfo.Name, committerInfo.Email, DateTimeOffset.Now);
+            var result = repo.ObjectDatabase.MergeCommits(sourceBranch.Tip, targetBranch.Tip, new MergeTreeOptions
+            {
+                FailOnConflict = true
+            });
+            if (result.Status == MergeTreeStatus.Conflicts)
+            {
+                return null;
+            }
+
+            var commit = repo.ObjectDatabase.CreateCommit(signature, signature, commitMessage, result.Tree, [targetBranch.Tip, sourceBranch.Tip], true);
+
+            return commit.Id;
+        }));
     }
 
     public ValueTask<Repository> OpenAndUpdateAsync(string uri)
@@ -150,9 +168,27 @@ public class LibGit2Operator : IGitOperator<Repository, Branch, ObjectId>
         }));
     }
 
-    public ValueTask<ObjectId?> RebaseBranchesAsync(Repository repo, Branch targetBranch, Branch sourceBranch)
+    public ValueTask<ObjectId?> RebaseBranchesAsync(Repository repo, Branch targetBranch, Branch sourceBranch, CommitterInfo committerInfo)
     {
-        throw new NotImplementedException();
+        return new ValueTask<ObjectId?>(Task.Run(() =>
+        {
+            var identity = new Identity(committerInfo.Name, committerInfo.Email);
+            var result = repo.Rebase.Start(
+                sourceBranch,
+                targetBranch,
+                targetBranch,
+                identity,
+                new RebaseOptions());
+            if (result.Status == RebaseStatus.Complete)
+            {
+                return sourceBranch.Tip.Id;
+            }
+            else
+            {
+                repo.Rebase.Abort();
+                return null;
+            }
+        }));
     }
 
     public ValueTask RemoveBranchAsync(Repository repo, Branch branch)
