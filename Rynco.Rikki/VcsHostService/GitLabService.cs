@@ -1,26 +1,64 @@
 using Rynco.Rikki.VcsHostService;
+using NGitLab;
+using NGitLab.Models;
+using System.Text.RegularExpressions;
 
 namespace Rynco.Rikki.GitOperator;
 
-public class GitLabService : IVcsHostService
+public class GitLabService(string serverUrl, string apiToken) : IVcsHostService
 {
-    public Task AbortCI(string repository, int ciNumber)
+    readonly GitLabClient client = new(serverUrl, apiToken);
+
+    public async Task AbortCI(string repository, int ciNumber)
     {
-        throw new NotImplementedException();
+        var project = client.GetPipelines(new ProjectId(repository));
+        var pipelineJobs = project.GetJobsAsync(new PipelineJobQuery
+        {
+            PipelineId = ciNumber
+        });
+        var jobClient = client.GetJobs(new ProjectId(repository));
+        await Task.WhenAll(pipelineJobs.Select(job => jobClient.RunActionAsync(job.Id, JobAction.Cancel)));
     }
 
     public string formatPrNumber(int prNumber)
     {
-        throw new NotImplementedException();
+        return $"!{prNumber}";
     }
 
-    public Task<CIStatus> PullRequestCheckCIStatus(string repository, int pullRequestId)
+    public async Task<CIStatus> PullRequestCheckCIStatus(string repository, int pullRequestId)
     {
-        throw new NotImplementedException();
+        var prs = client.GetMergeRequest(new ProjectId(repository));
+        var pr = await prs.GetByIidAsync(pullRequestId, new SingleMergeRequestQuery());
+        var pipeline = pr.HeadPipeline;
+        return pipeline.Status switch
+        {
+            JobStatus.Success => CIStatus.Passed,
+            JobStatus.Failed => CIStatus.Failed,
+            JobStatus.Running => CIStatus.NotFinished,
+            JobStatus.Unknown => CIStatus.NotFinished,
+            JobStatus.Pending => CIStatus.NotFinished,
+            JobStatus.Created => CIStatus.NotFinished,
+            JobStatus.Canceled => CIStatus.Failed,
+            JobStatus.Skipped => CIStatus.Passed,
+            JobStatus.Manual => CIStatus.NotFinished,
+            JobStatus.NoBuild => CIStatus.NotFinished,
+            JobStatus.Preparing => CIStatus.NotFinished,
+            JobStatus.WaitingForResource => CIStatus.NotFinished,
+            JobStatus.Scheduled => CIStatus.NotFinished,
+            JobStatus.Canceling => CIStatus.Failed,
+            _ => CIStatus.NotFinished
+        };
     }
 
-    public Task PullRequestSendComment(string repository, int pullRequestId, string comment)
+    public async Task PullRequestSendComment(string repository, int pullRequestId, string comment)
     {
-        throw new NotImplementedException();
+        await Task.Run(() =>
+        {
+            var prs = client.GetMergeRequest(new ProjectId(repository));
+            prs.Comments(pullRequestId).Add(new MergeRequestCommentCreate()
+            {
+                Body = comment
+            });
+        });
     }
 }
