@@ -26,3 +26,5 @@ Rikki is yet another provider-agnostic merge queue implementation.
 ---
 
 > "Ha?????????" -- Taki Shiina
+
+> _Rikki is inspired by [Homu](https://github.com/rust-lang/homu) and [Bors](https://github.com/rust-lang/bors)_
