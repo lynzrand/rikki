@@ -9,9 +9,14 @@ public class GiteaService : IVcsHostService
         throw new NotImplementedException();
     }
 
-    public string formatPrNumber(int prNumber)
+    public Task<CIStatus> CheckCIStatus(string repository, int ciNumber)
     {
         throw new NotImplementedException();
+    }
+
+    public string formatPrNumber(int prNumber)
+    {
+        return $"#{prNumber}";
     }
 
     public Task<CIStatus> PullRequestCheckCIStatus(string repository, int pullRequestId)

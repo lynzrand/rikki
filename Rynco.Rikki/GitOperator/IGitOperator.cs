@@ -19,7 +19,7 @@ where TCommitId : IEquatable<TCommitId>
     /// </summary>
     /// <param name="uri"></param>
     /// <returns></returns>
-    public ValueTask<TRepo> OpenAndUpdateAsync(string uri);
+    public ValueTask<TRepo> OpenAndUpdate(string uri);
 
     /// <summary>
     /// Try to get the branch with the given name in the given repository. If the branch doesn't exist,
@@ -28,14 +28,14 @@ where TCommitId : IEquatable<TCommitId>
     /// <param name="repo"></param>
     /// <param name="branchName"></param>
     /// <returns></returns>
-    public ValueTask<TBranch?> GetBranchAsync(TRepo repo, string branchName);
+    public ValueTask<TBranch?> GetBranch(TRepo repo, string branchName);
 
     /// <summary>
     /// Get the commit at the tip of the given branch.
     /// </summary>
     /// <param name="branch"></param>
     /// <returns></returns>
-    public ValueTask<TCommitId> GetBranchTipAsync(TRepo repo, TBranch branch);
+    public ValueTask<TCommitId> GetBranchTip(TRepo repo, TBranch branch);
 
     /// <summary>
     /// Create a new branch at the given commit.
@@ -43,7 +43,7 @@ where TCommitId : IEquatable<TCommitId>
     /// <param name="repo"></param>
     /// <param name="branchName"></param>
     /// <param name="commitId"></param>
-    public ValueTask<TBranch> CreateBranchAtCommitAsync(TRepo repo, string branchName, TCommitId commitId);
+    public ValueTask<TBranch> CreateBranchAtCommit(TRepo repo, string branchName, TCommitId commitId, bool overwriteExisting = false);
 
     /// <summary>
     /// Get the commit message and committer info of the given commit.
@@ -51,20 +51,20 @@ where TCommitId : IEquatable<TCommitId>
     /// <param name="repo"></param>
     /// <param name="commitId"></param>
     /// <returns></returns>
-    public ValueTask<(string, CommitterInfo)> GetCommitInfoAsync(TRepo repo, TCommitId commitId);
+    public ValueTask<(string, CommitterInfo)> GetCommitInfo(TRepo repo, TCommitId commitId);
 
     /// <summary>
-    /// Remove the given branch from the repository.
+    /// Remove the given branch from the repository and the remote.
     /// </summary>
     /// <param name="branch"></param>
-    public ValueTask RemoveBranchAsync(TRepo repo, TBranch branch);
+    public ValueTask RemoveBranchFromRemote(TRepo repo, TBranch branch);
 
     /// <summary>
     /// Reset the branch tip to the given commit.
     /// </summary>
     /// <param name="branch"></param>
     /// <param name="commitId"></param>
-    public ValueTask ResetBranchToCommitAsync(TRepo repo, TBranch branch, TCommitId commitId);
+    public ValueTask ResetBranchToCommit(TRepo repo, TBranch branch, TCommitId commitId);
 
     /// <summary>
     /// Check if the source branch can be merged into the target branch without any conflicts.
@@ -78,7 +78,7 @@ where TCommitId : IEquatable<TCommitId>
     /// <param name="targetBranch"></param>
     /// <param name="commitId"></param>
     /// <returns></returns>
-    public ValueTask<TCommitId?> MergeBranchesAsync(TRepo repo, TBranch targetBranch, TBranch sourceBranch, string commitMessage, CommitterInfo committerInfo);
+    public ValueTask<TCommitId?> MergeBranches(TRepo repo, TBranch targetBranch, TBranch sourceBranch, string commitMessage, CommitterInfo committerInfo);
 
     /// <summary>
     /// Rebase the source branch onto the target branch, and then return the ID of the new commit.
@@ -87,20 +87,14 @@ where TCommitId : IEquatable<TCommitId>
     /// <param name="targetBranch"></param>
     /// <param name="sourceBranch"></param>
     /// <returns></returns>
-    public ValueTask<TCommitId?> RebaseBranchesAsync(TRepo repo, TBranch targetBranch, TBranch sourceBranch, CommitterInfo committerInfo);
+    public ValueTask<TCommitId?> RebaseBranches(TRepo repo, TBranch targetBranch, TBranch sourceBranch, CommitterInfo committerInfo);
 
     /// <summary>
-    /// Push everything in the repository to the remote.
-    /// </summary>
-    /// <param name="repo"></param>
-    public ValueTask PushRepoStateAsync(TRepo repo);
-
-    /// <summary>
-    /// Push the given branch to the remote.
+    /// Push the given branch to the remote. Always force-push.
     /// </summary>
     /// <param name="repo"></param>
     /// <param name="branch"></param>
-    public ValueTask PushBranchAsync(TRepo repo, TBranch branch);
+    public ValueTask ForcePushBranch(TRepo repo, TBranch branch);
 
     /// <summary>
     /// Perform a merge between the source branch and the target branch, using the given style.
@@ -126,19 +120,19 @@ where TCommitId : IEquatable<TCommitId>
         switch (style)
         {
             case MergeStyle.Merge:
-                return await MergeBranchesAsync(repo, targetBranch, sourceBranch, commitMessage, committerInfo);
+                return await MergeBranches(repo, targetBranch, sourceBranch, commitMessage, committerInfo);
             case MergeStyle.Linear:
-                return await RebaseBranchesAsync(repo, targetBranch, sourceBranch, committerInfo);
+                return await RebaseBranches(repo, targetBranch, sourceBranch, committerInfo);
             case MergeStyle.SemiLinear:
                 {
                     // First rebase the source branch onto the target branch,
                     // then merge the source branch into the target branch.
-                    var newCommitId = await RebaseBranchesAsync(repo, targetBranch, sourceBranch, committerInfo);
+                    var newCommitId = await RebaseBranches(repo, targetBranch, sourceBranch, committerInfo);
                     if (newCommitId == null)
                     {
                         return default;
                     }
-                    return await MergeBranchesAsync(repo, targetBranch, sourceBranch, commitMessage, committerInfo);
+                    return await MergeBranches(repo, targetBranch, sourceBranch, commitMessage, committerInfo);
                 }
             default:
                 throw new ArgumentOutOfRangeException(nameof(style));

@@ -1,3 +1,5 @@
+using Rynco.Rikki.GitOperator;
+
 namespace Rynco.Rikki.VcsHostService;
 
 /// <summary>
@@ -37,6 +39,14 @@ public interface IVcsHostService
     /// <param name="ciNumber"></param>
     /// <returns></returns>
     public Task AbortCI(string repository, int ciNumber);
+
+    /// <summary>
+    /// Check the status of the given CI run.
+    /// </summary>
+    /// <param name="repository"></param>
+    /// <param name="ciNumber"></param>
+    /// <returns></returns>
+    public Task<CIStatus> CheckCIStatus(string repository, int ciNumber);
 }
 
 public enum CIStatus

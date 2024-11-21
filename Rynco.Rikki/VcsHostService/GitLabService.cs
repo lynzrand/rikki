@@ -11,14 +11,24 @@ public class GitLabService(string serverUrl, string apiToken) : IVcsHostService
 
     public async Task AbortCI(string repository, int ciNumber)
     {
-        var project = client.GetPipelines(new ProjectId(repository));
-        var pipelineJobs = project.GetJobsAsync(new PipelineJobQuery
+        var pipelineClient = client.GetPipelines(new ProjectId(repository));
+        var pipelineJobs = pipelineClient.GetJobsAsync(new PipelineJobQuery
         {
             PipelineId = ciNumber
         });
         var jobClient = client.GetJobs(new ProjectId(repository));
         await Task.WhenAll(pipelineJobs.Select(job => jobClient.RunActionAsync(job.Id, JobAction.Cancel)));
     }
+
+    public async Task<CIStatus> CheckCIStatus(string repository, int ciNumber)
+    {
+        var pipelineClient = client.GetPipelines(new ProjectId(repository));
+        var pipeline = await pipelineClient.GetByIdAsync(ciNumber);
+        return PipelineStatusToCiStatus(pipeline);
+
+    }
+
+
 
     public string formatPrNumber(int prNumber)
     {
@@ -30,6 +40,11 @@ public class GitLabService(string serverUrl, string apiToken) : IVcsHostService
         var prs = client.GetMergeRequest(new ProjectId(repository));
         var pr = await prs.GetByIidAsync(pullRequestId, new SingleMergeRequestQuery());
         var pipeline = pr.HeadPipeline;
+        return PipelineStatusToCiStatus(pipeline);
+    }
+
+    private static CIStatus PipelineStatusToCiStatus(Pipeline pipeline)
+    {
         return pipeline.Status switch
         {
             JobStatus.Success => CIStatus.Passed,

@@ -40,32 +40,43 @@ public class MockGitOperator : IGitOperator<MockRepo, MockBranch, MockCommitId>
     public ValueTask<bool> CanMergeWithoutConflict(MockRepo repo, MockBranch targetBranch, MockBranch sourceBranch)
     {
         // get result safety: no async in the method, so no blocking
-        var targetCommit = GetBranchTipAsync(repo, targetBranch).Result;
-        var sourceCommit = GetBranchTipAsync(repo, sourceBranch).Result;
+        var targetCommit = GetBranchTip(repo, targetBranch).Result;
+        var sourceCommit = GetBranchTip(repo, sourceBranch).Result;
         var mergedTree = repo.TryMergeTrees(targetCommit, sourceCommit);
         return new ValueTask<bool>(mergedTree != null);
     }
 
-    public ValueTask<MockBranch> CreateBranchAtCommitAsync(MockRepo repo, string branchName, MockCommitId commitId)
+    public ValueTask<MockBranch> CreateBranchAtCommit(MockRepo repo, string branchName, MockCommitId commitId, bool overwriteExisting = false)
     {
+        if (repo.Branches.ContainsKey(branchName))
+        {
+            if (overwriteExisting)
+            {
+                repo.Branches.Remove(branchName);
+            }
+            else
+            {
+                throw new InvalidOperationException($"Branch {branchName} already exists.");
+            }
+        }
         repo.CreateBranch(branchName, commitId);
         return new ValueTask<MockBranch>(new MockBranch(branchName));
     }
 
-    public ValueTask<MockBranch?> GetBranchAsync(MockRepo repo, string branchName)
+    public ValueTask<MockBranch?> GetBranch(MockRepo repo, string branchName)
     {
         return new ValueTask<MockBranch?>(repo.GetBranch(branchName));
     }
 
-    public ValueTask<MockCommitId> GetBranchTipAsync(MockRepo repo, MockBranch branch)
+    public ValueTask<MockCommitId> GetBranchTip(MockRepo repo, MockBranch branch)
     {
         return new ValueTask<MockCommitId>(new MockCommitId(repo.Branches[branch.Name]));
     }
 
-    public ValueTask<MockCommitId?> MergeBranchesAsync(MockRepo repo, MockBranch targetBranch, MockBranch sourceBranch, string commitMessage, CommitterInfo committerInfo)
+    public ValueTask<MockCommitId?> MergeBranches(MockRepo repo, MockBranch targetBranch, MockBranch sourceBranch, string commitMessage, CommitterInfo committerInfo)
     {
-        var targetCommit = GetBranchTipAsync(repo, targetBranch).Result;
-        var sourceCommit = GetBranchTipAsync(repo, sourceBranch).Result;
+        var targetCommit = GetBranchTip(repo, targetBranch).Result;
+        var sourceCommit = GetBranchTip(repo, sourceBranch).Result;
         var mergedTree = repo.TryMergeTrees(targetCommit, sourceCommit);
         if (mergedTree == null)
         {
@@ -76,7 +87,7 @@ public class MockGitOperator : IGitOperator<MockRepo, MockBranch, MockCommitId>
         return new ValueTask<MockCommitId?>(new MockCommitId(newCommit.Id));
     }
 
-    public ValueTask<MockRepo> OpenAndUpdateAsync(string uri)
+    public ValueTask<MockRepo> OpenAndUpdate(string uri)
     {
         if (repos.TryGetValue(uri, out var repo))
         {
@@ -85,22 +96,22 @@ public class MockGitOperator : IGitOperator<MockRepo, MockBranch, MockCommitId>
         throw new Exception("Repo not found");
     }
 
-    public ValueTask PushBranchAsync(MockRepo repo, MockBranch branch)
+    public ValueTask ForcePushBranch(MockRepo repo, MockBranch branch)
     {
         // noop
         return default;
     }
 
-    public ValueTask PushRepoStateAsync(MockRepo repo)
+    public ValueTask PushRepoState(MockRepo repo)
     {
         // noop
         return default;
     }
 
-    public ValueTask<MockCommitId?> RebaseBranchesAsync(MockRepo repo, MockBranch targetBranch, MockBranch sourceBranch)
+    public ValueTask<MockCommitId?> RebaseBranches(MockRepo repo, MockBranch targetBranch, MockBranch sourceBranch, CommitterInfo committerInfo)
     {
-        var targetCommit = GetBranchTipAsync(repo, targetBranch).Result;
-        var sourceCommit = GetBranchTipAsync(repo, sourceBranch).Result;
+        var targetCommit = GetBranchTip(repo, targetBranch).Result;
+        var sourceCommit = GetBranchTip(repo, sourceBranch).Result;
         var baseCommit = repo.FindLCAs(targetCommit, sourceCommit).First();
         var newCommit = repo.TryRebaseCommits(targetCommit, sourceCommit, baseCommit);
         if (newCommit == null)
@@ -110,21 +121,23 @@ public class MockGitOperator : IGitOperator<MockRepo, MockBranch, MockCommitId>
         return new ValueTask<MockCommitId?>(new MockCommitId(newCommit.Id));
     }
 
-    public ValueTask RemoveBranchAsync(MockRepo repo, MockBranch branch)
+    public ValueTask RemoveBranchFromRemote(MockRepo repo, MockBranch branch)
     {
         repo.RemoveBranch(branch.Name);
         return default;
     }
 
-    public ValueTask ResetBranchToCommitAsync(MockRepo repo, MockBranch branch, MockCommitId commitId)
+    public ValueTask ResetBranchToCommit(MockRepo repo, MockBranch branch, MockCommitId commitId)
     {
         repo.Branches[branch.Name] = commitId.Id;
         return default;
     }
 
-    public ValueTask<(string, CommitterInfo)> GetCommitInfoAsync(MockRepo repo, MockCommitId commitId)
+    public ValueTask<(string, CommitterInfo)> GetCommitInfo(MockRepo repo, MockCommitId commitId)
     {
         var commit = repo.GetCommit(commitId.Id);
         return new ValueTask<(string, CommitterInfo)>((commit.Message, commit.CommitterInfo));
     }
+
+
 }

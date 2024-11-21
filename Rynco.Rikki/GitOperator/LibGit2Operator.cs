@@ -51,11 +51,22 @@ public class LibGit2Operator : IGitOperator<Repository, Branch, ObjectId>
         }));
     }
 
-    public async ValueTask<Branch> CreateBranchAtCommitAsync(Repository repo, string branchName, ObjectId commitId)
+    public async ValueTask<Branch> CreateBranchAtCommit(Repository repo, string branchName, ObjectId commitId, bool overwriteExisting = false)
     {
         return await Task.Run(() =>
         {
             var commit = repo.Lookup<Commit>(commitId);
+            if (repo.Branches[branchName] != null)
+            {
+                if (overwriteExisting)
+                {
+                    repo.Branches.Remove(branchName);
+                }
+                else
+                {
+                    throw new InvalidOperationException($"Branch {branchName} already exists.");
+                }
+            }
             return repo.CreateBranch(branchName, commit);
         });
     }
@@ -70,7 +81,7 @@ public class LibGit2Operator : IGitOperator<Repository, Branch, ObjectId>
         return new ObjectId(commitId);
     }
 
-    public ValueTask<Branch?> GetBranchAsync(Repository repo, string branchName)
+    public ValueTask<Branch?> GetBranch(Repository repo, string branchName)
     {
         return new ValueTask<Branch?>(Task.Run(() =>
         {
@@ -78,12 +89,12 @@ public class LibGit2Operator : IGitOperator<Repository, Branch, ObjectId>
         }));
     }
 
-    public ValueTask<ObjectId> GetBranchTipAsync(Repository repo, Branch branch)
+    public ValueTask<ObjectId> GetBranchTip(Repository repo, Branch branch)
     {
         return ValueTask.FromResult(branch.Tip.Id);
     }
 
-    public ValueTask<(string, CommitterInfo)> GetCommitInfoAsync(Repository repo, ObjectId commitId)
+    public ValueTask<(string, CommitterInfo)> GetCommitInfo(Repository repo, ObjectId commitId)
     {
         return new ValueTask<(string, CommitterInfo)>(Task.Run(() =>
         {
@@ -92,7 +103,7 @@ public class LibGit2Operator : IGitOperator<Repository, Branch, ObjectId>
         }));
     }
 
-    public ValueTask<ObjectId?> MergeBranchesAsync(Repository repo, Branch targetBranch, Branch sourceBranch, string commitMessage, CommitterInfo committerInfo)
+    public ValueTask<ObjectId?> MergeBranches(Repository repo, Branch targetBranch, Branch sourceBranch, string commitMessage, CommitterInfo committerInfo)
     {
         return new ValueTask<ObjectId?>(Task.Run(() =>
         {
@@ -112,7 +123,7 @@ public class LibGit2Operator : IGitOperator<Repository, Branch, ObjectId>
         }));
     }
 
-    public ValueTask<Repository> OpenAndUpdateAsync(string uri)
+    public ValueTask<Repository> OpenAndUpdate(string uri)
     {
         var path = FormatPath(uri);
         return new ValueTask<Repository>(Task.Run(() =>
@@ -142,7 +153,7 @@ public class LibGit2Operator : IGitOperator<Repository, Branch, ObjectId>
         }));
     }
 
-    public ValueTask PushBranchAsync(Repository repo, Branch branch)
+    public ValueTask ForcePushBranch(Repository repo, Branch branch)
     {
         return new ValueTask(Task.Run(() =>
         {
@@ -154,7 +165,7 @@ public class LibGit2Operator : IGitOperator<Repository, Branch, ObjectId>
         }));
     }
 
-    public ValueTask PushRepoStateAsync(Repository repo)
+    public ValueTask PushRepoState(Repository repo)
     {
         // aka git push --mirror
         return new ValueTask(Task.Run(() =>
@@ -168,7 +179,7 @@ public class LibGit2Operator : IGitOperator<Repository, Branch, ObjectId>
         }));
     }
 
-    public ValueTask<ObjectId?> RebaseBranchesAsync(Repository repo, Branch targetBranch, Branch sourceBranch, CommitterInfo committerInfo)
+    public ValueTask<ObjectId?> RebaseBranches(Repository repo, Branch targetBranch, Branch sourceBranch, CommitterInfo committerInfo)
     {
         return new ValueTask<ObjectId?>(Task.Run(() =>
         {
@@ -191,7 +202,7 @@ public class LibGit2Operator : IGitOperator<Repository, Branch, ObjectId>
         }));
     }
 
-    public ValueTask RemoveBranchAsync(Repository repo, Branch branch)
+    public ValueTask RemoveBranchFromRemote(Repository repo, Branch branch)
     {
         return new ValueTask(Task.Run(() =>
         {
@@ -199,7 +210,7 @@ public class LibGit2Operator : IGitOperator<Repository, Branch, ObjectId>
         }));
     }
 
-    public ValueTask ResetBranchToCommitAsync(Repository repo, Branch branch, ObjectId commitId)
+    public ValueTask ResetBranchToCommit(Repository repo, Branch branch, ObjectId commitId)
     {
         return new ValueTask(Task.Run(() =>
         {

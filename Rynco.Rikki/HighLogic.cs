@@ -2,6 +2,7 @@ using System.Net;
 using Microsoft.EntityFrameworkCore;
 using Rynco.Rikki.Db;
 using Rynco.Rikki.GitOperator;
+using Rynco.Rikki.Util;
 using Rynco.Rikki.VcsHostService;
 
 namespace Rynco.Rikki;
@@ -31,7 +32,7 @@ where TCommitId : IEquatable<TCommitId>
 
     private string FormatTemporaryBranchName(int prNumber)
     {
-        return $"merge-{prNumber}";
+        return $"rikki/merge-{prNumber}";
     }
 
     public async Task OnPrAdded(string uri, int prNumber, int priority, string sourceBranch, string targetBranch)
@@ -60,7 +61,7 @@ where TCommitId : IEquatable<TCommitId>
 
     public async Task OnRequestToAddToMergeQueue(string uri, int prNumber, CommitterInfo info)
     {
-        var repo = await gitOperator.OpenAndUpdateAsync(uri);
+        var repo = await gitOperator.OpenAndUpdate(uri);
         using var txn = await db.BeginTransaction();
 
         // Acquire data from database, so the transaction is open
@@ -176,9 +177,9 @@ where TCommitId : IEquatable<TCommitId>
         // Check for merge conflict
         var sourceBranch = pr.SourceBranch;
         var workingBranch = mq.WorkingBranch;
-        var gitSourceBranch = await gitOperator.GetBranchAsync(repo, sourceBranch)
+        var gitSourceBranch = await gitOperator.GetBranch(repo, sourceBranch)
             ?? throw new InvalidOperationException($"Branch {sourceBranch} not found in repo {uri}");
-        var gitWorkingBranch = await gitOperator.GetBranchAsync(repo, workingBranch)
+        var gitWorkingBranch = await gitOperator.GetBranch(repo, workingBranch)
             ?? throw new InvalidOperationException($"Branch {workingBranch} not found in repo {uri}");
         var noConflict = await gitOperator.CanMergeWithoutConflict(repo, gitWorkingBranch, gitSourceBranch);
         if (!noConflict)
@@ -188,8 +189,18 @@ where TCommitId : IEquatable<TCommitId>
 
         // Create a temporary branch for the merge
         var tempBranchName = FormatTemporaryBranchName(pr.Number);
-        var commitId = await gitOperator.GetBranchTipAsync(repo, gitSourceBranch);
-        var tempBranch = await gitOperator.CreateBranchAtCommitAsync(repo, tempBranchName, commitId);
+        var commitId = await gitOperator.GetBranchTip(repo, gitSourceBranch);
+        var tempBranch = await gitOperator.CreateBranchAtCommit(repo, tempBranchName, commitId, overwriteExisting: true);
+        var succeeded = false;
+
+        await using var _ = AsyncDefer.Do(async () =>
+        {
+            if (!succeeded)
+            {
+                await gitOperator.RemoveBranchFromRemote(repo, tempBranch);
+            }
+        });
+
         var resultCommit = await gitOperator.PerformMergeAsync(
             repo,
             mergeStyle,
@@ -202,9 +213,12 @@ where TCommitId : IEquatable<TCommitId>
             throw new FailedToMergeException(FailedToMergeException.ReasonKind.MergeConflict);
         }
 
-        // Remove the temporary branch and fast forward the working branch
-        await gitOperator.ResetBranchToCommitAsync(repo, gitWorkingBranch, resultCommit);
-        await gitOperator.RemoveBranchAsync(repo, tempBranch);
+        // fast forward the working branch
+        await gitOperator.ResetBranchToCommit(repo, gitWorkingBranch, resultCommit);
+        // Push the temporary branch to the remote to trigger CI
+        await gitOperator.ForcePushBranch(repo, tempBranch);
+
+        succeeded = true;
 
         return resultCommit;
     }
@@ -241,15 +255,15 @@ where TCommitId : IEquatable<TCommitId>
         }
         else
         {
-            var targetBranch = await gitOperator.GetBranchAsync(repo, mq.TargetBranch)
+            var targetBranch = await gitOperator.GetBranch(repo, mq.TargetBranch)
                 ?? throw new InvalidOperationException($"Branch {mq.TargetBranch} not found in repo {uri}");
-            baseCommit = await gitOperator.GetBranchTipAsync(repo, targetBranch);
+            baseCommit = await gitOperator.GetBranchTip(repo, targetBranch);
         }
 
         // Reset the working branch to the base commit
-        var workingBranch = await gitOperator.GetBranchAsync(repo, mq.WorkingBranch)
+        var workingBranch = await gitOperator.GetBranch(repo, mq.WorkingBranch)
             ?? throw new InvalidOperationException($"Branch {mq.WorkingBranch} not found in repo {uri}");
-        await gitOperator.ResetBranchToCommitAsync(repo, workingBranch, baseCommit);
+        await gitOperator.ResetBranchToCommit(repo, workingBranch, baseCommit);
 
         // Add PRs to the working branch
         int seqNum = rebuildAfter?.CiInfo?.SequenceNumber + 1 ?? mq.HeadSequenceNumber;
@@ -262,7 +276,7 @@ where TCommitId : IEquatable<TCommitId>
                 // Get the original commit message and committer info from the original merge commit
                 var lastCommit = pr.CiInfo?.MqCommit
                     ?? throw new InvalidOperationException("The PR doesn't have a merge commit SHA.");
-                var (commitMessage, commitInfo) = await gitOperator.GetCommitInfoAsync(repo, gitOperator.ParseCommitId(lastCommit));
+                var (commitMessage, commitInfo) = await gitOperator.GetCommitInfo(repo, gitOperator.ParseCommitId(lastCommit));
                 var sha = await PutPrToTailOfMergeQueue(uri, repo, pr, mq, commitInfo, mergeStyle);
                 var ciInfo = new EnqueuedPullRequest
                 {
@@ -353,7 +367,7 @@ where TCommitId : IEquatable<TCommitId>
             {
                 rebuildAfter = enqueuedPrs[prPos - 1];
             }
-            var gitRepo = await gitOperator.OpenAndUpdateAsync(repo);
+            var gitRepo = await gitOperator.OpenAndUpdate(repo);
             var rebuildResult = await RebuildMergeQueue(repo, gitRepo, rebuildAfter, prsToRebuild, mq, dbRepo.MergeStyle);
 
             pr.CiInfo = null;
@@ -385,13 +399,25 @@ where TCommitId : IEquatable<TCommitId>
         var lastCommit = lastToMerge.CiInfo!.MqCommit; // safe: we have checked non-null above
         var seqNum = lastToMerge.CiInfo!.SequenceNumber;
 
-        var repo = await gitOperator.OpenAndUpdateAsync(repoUri);
-        var targetBranch = await gitOperator.GetBranchAsync(repo, mq.TargetBranch)
+        var repo = await gitOperator.OpenAndUpdate(repoUri);
+        var targetBranch = await gitOperator.GetBranch(repo, mq.TargetBranch)
             ?? throw new InvalidOperationException($"Branch {mq.TargetBranch} not found in repo {repoUri}");
-        var commitId = gitOperator.ParseCommitId(lastCommit);
-        await gitOperator.ResetBranchToCommitAsync(repo, targetBranch, commitId);
 
-        await gitOperator.PushBranchAsync(repo, targetBranch);
+        var commitId = gitOperator.ParseCommitId(lastCommit);
+        await gitOperator.ResetBranchToCommit(repo, targetBranch, commitId);
+
+        // Remove merge temp branches
+        foreach (var pr in mergeList)
+        {
+            var tempBranchName = FormatTemporaryBranchName(pr.Number);
+            var tempBranch = await gitOperator.GetBranch(repo, tempBranchName);
+            if (tempBranch != null)
+            {
+                await gitOperator.RemoveBranchFromRemote(repo, tempBranch);
+            }
+        }
+
+        await gitOperator.ForcePushBranch(repo, targetBranch);
 
         // Update the merge queue
         mq.HeadSequenceNumber = seqNum + 1;
