@@ -28,8 +28,6 @@ public class GitLabService(string serverUrl, string apiToken) : IVcsHostService
 
     }
 
-
-
     public string formatPrNumber(int prNumber)
     {
         return $"!{prNumber}";
