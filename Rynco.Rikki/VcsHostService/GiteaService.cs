@@ -1,6 +1,4 @@
-using Rynco.Rikki.VcsHostService;
-
-namespace Rynco.Rikki.GitOperator;
+namespace Rynco.Rikki.VcsHostService;
 
 public class GiteaService : IVcsHostService
 {

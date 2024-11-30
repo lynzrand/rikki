@@ -1,7 +1,5 @@
 using CommandLine;
-using LibGit2Sharp;
 using Rynco.Rikki.Db;
-using Rynco.Rikki.GitOperator;
 
 var options = Parser.Default.ParseArguments<Options>(args).Value;
 

@@ -1,5 +1,3 @@
-using Rynco.Rikki.GitOperator;
-
 namespace Rynco.Rikki.VcsHostService;
 
 /// <summary>

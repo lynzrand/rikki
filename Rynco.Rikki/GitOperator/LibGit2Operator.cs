@@ -1,6 +1,6 @@
 using LibGit2Sharp;
 
-namespace Rynco.Rikki.GitOperator;
+namespace Rynco.Rikki.VcsHostService;
 
 public class LibGit2Operator : IGitOperator<Repository, Branch, ObjectId>
 {

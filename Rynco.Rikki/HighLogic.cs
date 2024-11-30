@@ -1,9 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Rynco.Rikki.Config;
 using Rynco.Rikki.Db;
-using Rynco.Rikki.GitOperator;
-using Rynco.Rikki.Util;
 using Rynco.Rikki.VcsHostService;
+using Rynco.Rikki.Util;
 
 namespace Rynco.Rikki;
 

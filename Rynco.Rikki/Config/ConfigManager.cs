@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using LibGit2Sharp;
 
 namespace Rynco.Rikki.Config;
 
@@ -61,5 +62,19 @@ public sealed class ConfigManager
             return repo;
         }
         throw new ArgumentException($"No repository with URI {url} found.");
+    }
+
+    public Credentials LibGit2CredentialsHandler(string url, string _usernameFromUrl, SupportedCredentialTypes types)
+    {
+        var repo = GetRepoByUrl(url);
+        if (!types.HasFlag(SupportedCredentialTypes.UsernamePassword))
+        {
+            throw new ArgumentException("Unsupported credential type. Rikki only supports username/password credentials.");
+        }
+        return new UsernamePasswordCredentials
+        {
+            Username = repo.Username,
+            Password = repo.Token
+        };
     }
 }

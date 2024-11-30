@@ -1,9 +1,7 @@
-using Rynco.Rikki.VcsHostService;
 using NGitLab;
 using NGitLab.Models;
-using System.Text.RegularExpressions;
 
-namespace Rynco.Rikki.GitOperator;
+namespace Rynco.Rikki.VcsHostService;
 
 public class GitLabService(string serverUrl, string apiToken) : IVcsHostService
 {

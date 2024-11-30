@@ -31,6 +31,8 @@ public class BasicTests
                     Id = mockRepoId,
                     Url = mockRepoName,
                     DisplayName = mockRepoName,
+                    Username = "mockUser",
+                    Token = "mockToken",
                     Kind = RepoKind.Gitlab,
                     MergeStyle = MergeStyle.Merge
                 }

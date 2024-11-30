@@ -1,7 +1,6 @@
 using Rynco.Rikki.Config;
-using Rynco.Rikki.Db;
 
-namespace Rynco.Rikki.GitOperator;
+namespace Rynco.Rikki.VcsHostService;
 
 /// <summary>
 /// High-level interface to local Git operations, including how URIs are mapped to local paths.

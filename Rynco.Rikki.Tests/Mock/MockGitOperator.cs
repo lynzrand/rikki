@@ -2,7 +2,7 @@ using System.Collections.Immutable;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using NUnit.Framework.Constraints;
-using Rynco.Rikki.GitOperator;
+using Rynco.Rikki.VcsHostService;
 
 namespace Rynco.Rikki.Tests;
 

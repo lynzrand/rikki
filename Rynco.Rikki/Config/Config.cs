@@ -62,9 +62,15 @@ public record class Repo
     public required RepoKind Kind { get; set; }
 
     /// <summary>
-    /// Access token for the repository.
+    /// The username to access the repository.
     /// </summary>
-    public string? Token { get; set; }
+    public required string Username { get; set; }
+
+    /// <summary>
+    /// Access token for the repository. Should be usable both for host service access and
+    /// using as a HTTP password in Git operations.
+    /// </summary>
+    public required string Token { get; set; }
 
     /// <summary>
     /// The merge style for the repository.
