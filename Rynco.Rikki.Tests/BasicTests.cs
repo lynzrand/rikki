@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Rynco.Rikki.Config;
 using Rynco.Rikki.Db;
 
 namespace Rynco.Rikki.Tests;
@@ -11,7 +12,9 @@ public class BasicTests
     MockVcsHost mockVcsHost = null!;
     HighDb db = null!;
     HighLogic<MockRepo, MockBranch, MockCommitId> highLogic = null!;
+    ConfigManager configManager = null!;
 
+    const string mockRepoId = "mockRepo";
     const string mockRepoName = "mockRepo";
     const string mockTargetBranch = "master";
     const string mockWorkingBranch = "merge-queue";
@@ -20,6 +23,21 @@ public class BasicTests
     [SetUp]
     public async Task Setup()
     {
+        // Setup config
+        var config = new ProgramConfig
+        {
+            Repos = [
+                new Repo {
+                    Id = mockRepoId,
+                    Url = mockRepoName,
+                    DisplayName = mockRepoName,
+                    Kind = RepoKind.Gitlab,
+                    MergeStyle = MergeStyle.Merge
+                }
+            ]
+        };
+        configManager = new ConfigManager(config);
+
         // Setup mock git repository
         mockGitOperator = new MockGitOperator();
         var repo = mockGitOperator.CreateRepository(mockRepoName);
@@ -41,18 +59,9 @@ public class BasicTests
 
         var db = new RikkiDbContext(dbOptions);
         db.Database.EnsureCreated();
-
-        var dbRepo = db.Add(new Repo
-        {
-            Url = mockRepoName,
-            DisplayName = mockRepoName,
-            Kind = RepoKind.Gitlab,
-            MergeStyle = MergeStyle.Merge
-        });
-        db.SaveChanges();
         var dbMq = db.Add(new MergeQueue
         {
-            RepoId = dbRepo.Entity.Id,
+            RepoId = mockRepoId,
             HeadSequenceNumber = 0,
             TailSequenceNumber = 0,
             TargetBranch = mockTargetBranch,
@@ -61,7 +70,11 @@ public class BasicTests
         db.SaveChanges();
         this.db = new HighDb(db);
 
-        highLogic = new HighLogic<MockRepo, MockBranch, MockCommitId>(this.db, mockGitOperator, mockVcsHost);
+        highLogic = new HighLogic<MockRepo, MockBranch, MockCommitId>(
+            configManager,
+            this.db,
+            mockGitOperator,
+            mockVcsHost);
     }
 
 
@@ -169,7 +182,7 @@ public class BasicTests
         await highLogic.OnCiFinish(mockRepoName, 100, false);
 
         // The PR should be removed from the merge queue
-        var dbRepo = await db.GetRepoByUrl(mockRepoName);
+        var dbRepo = configManager.GetRepoByUrl(mockRepoName);
         var pr = await db.GetPrByRepoAndNumber(dbRepo.Id, 1);
         Assert.That(pr.CiInfo, Is.Null);
     }
@@ -209,7 +222,7 @@ public class BasicTests
         await highLogic.OnCiFinish(mockRepoName, 100, false);
 
         // The PR should be removed from the merge queue
-        var dbRepo = await db.GetRepoByUrl(mockRepoName);
+        var dbRepo = configManager.GetRepoByUrl(mockRepoName);
         var pr = await db.GetPrByRepoAndNumber(dbRepo.Id, 1);
         Assert.That(pr.CiInfo, Is.Null);
     }

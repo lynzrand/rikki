@@ -1,5 +1,5 @@
-using System.Net;
 using Microsoft.EntityFrameworkCore;
+using Rynco.Rikki.Config;
 using Rynco.Rikki.Db;
 using Rynco.Rikki.GitOperator;
 using Rynco.Rikki.Util;
@@ -15,6 +15,7 @@ namespace Rynco.Rikki;
 /// sense this class is disposable, as it's not required to be kept around.
 /// </summary>
 public sealed class HighLogic<TRepo, TBranch, TCommitId>(
+    ConfigManager config,
     HighDb db,
     IGitOperator<TRepo, TBranch, TCommitId> gitOperator,
     IVcsHostService vcsHostService)
@@ -38,7 +39,7 @@ where TCommitId : IEquatable<TCommitId>
     public async Task OnPrAdded(string uri, int prNumber, int priority, string sourceBranch, string targetBranch)
     {
         using var txn = await db.BeginTransaction();
-        var dbRepo = await db.GetRepoByUrl(uri);
+        var dbRepo = config.GetRepoByUrl(uri);
         var dbMq = await db.GetMergeQueueByRepoAndBranch(dbRepo.Id, targetBranch);
         if (dbMq == null)
         {
@@ -65,7 +66,7 @@ where TCommitId : IEquatable<TCommitId>
         using var txn = await db.BeginTransaction();
 
         // Acquire data from database, so the transaction is open
-        var dbRepo = await db.GetRepoByUrl(uri);
+        var dbRepo = config.GetRepoByUrl(uri);
         var dbPr = await db.GetPrByRepoAndNumber(dbRepo.Id, prNumber);
         var dbMq = await db.GetMergeQueueById(dbPr.MergeQueueId);
 
@@ -355,7 +356,7 @@ where TCommitId : IEquatable<TCommitId>
             // CI failed. Remove this PR from the merge queue, and rebuild the rest of the queue.
             var pr = await db.GetPrById(ciInfo.PullRequestId);
             var mq = await db.GetMergeQueueById(pr.MergeQueueId);
-            var dbRepo = await db.GetRepoById(mq.RepoId);
+            var dbRepo = config.GetRepoById(mq.RepoId);
 
             // Rebuild the merge queue
             var enqueuedPrs = await db.GetPrsInMergeQueue(mq);

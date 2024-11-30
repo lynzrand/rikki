@@ -3,35 +3,6 @@ using System.ComponentModel.DataAnnotations;
 namespace Rynco.Rikki.Db;
 
 /// <summary>
-/// The kind of repository. Only Gitlab is supported at the moment.
-/// </summary>
-public enum RepoKind
-{
-    Gitlab = 0
-}
-
-/// <summary>
-/// The merge fashion for a repository.
-/// </summary>
-public enum MergeStyle
-{
-    /// <summary>
-    /// Merge using merge commits.
-    /// </summary>
-    Merge = 0,
-
-    /// <summary>
-    /// Merge using rebase.
-    /// </summary>
-    Linear = 1,
-
-    /// <summary>
-    /// First rebase, and then create a merge commit.
-    /// </summary>
-    SemiLinear = 2
-}
-
-/// <summary>
 /// The state of a pull request.
 /// </summary>
 public enum PullRequestState
@@ -53,42 +24,6 @@ public enum PullRequestState
 }
 
 /// <summary>
-/// Represents a repository that Rikki is managing.
-/// </summary>
-public sealed record Repo
-{
-    /// <summary>
-    /// The internal ID of the repository.
-    /// </summary>
-    public int Id { get; set; }
-
-    /// <summary>
-    /// The display name of the repository.
-    /// </summary>
-    public required string DisplayName { get; set; }
-
-    /// <summary>
-    /// The kind of repository.
-    /// </summary>
-    public required RepoKind Kind { get; set; }
-
-    /// <summary>
-    /// The URL of the repository.
-    /// </summary>
-    public required string Url { get; set; }
-
-    /// <summary>
-    /// Access token for the repository.
-    /// </summary>
-    public string? Token { get; set; }
-
-    /// <summary>
-    /// The merge style for the repository.
-    /// </summary>
-    public required MergeStyle MergeStyle { get; set; }
-}
-
-/// <summary>
 /// Represents a merge queue for a repository.
 /// </summary>
 public sealed record MergeQueue
@@ -99,9 +34,9 @@ public sealed record MergeQueue
     public int Id { get; set; }
 
     /// <summary>
-    /// The repository this merge queue is for.
+    /// The repository this merge queue is for. Should be the string ID in the config.
     /// </summary>
-    public required int RepoId { get; set; }
+    public required string RepoId { get; set; }
 
     /// <summary>
     /// The target branch for this merge queue. This is the branch that will be updated when CI
@@ -145,7 +80,7 @@ public sealed record PullRequest
     /// <summary>
     /// The repository this pull request is for.
     /// </summary>
-    public required int RepoId { get; set; }
+    public required string RepoId { get; set; }
 
     /// <summary>
     /// The source branch of the pull request.

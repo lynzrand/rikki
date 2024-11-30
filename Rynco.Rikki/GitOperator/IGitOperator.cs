@@ -1,3 +1,4 @@
+using Rynco.Rikki.Config;
 using Rynco.Rikki.Db;
 
 namespace Rynco.Rikki.GitOperator;
