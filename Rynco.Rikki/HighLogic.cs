@@ -17,7 +17,7 @@ public sealed class HighLogic<TRepo, TBranch, TCommitId>(
     ConfigManager config,
     HighDb db,
     IGitOperator<TRepo, TBranch, TCommitId> gitOperator,
-    IVcsHostService vcsHostService)
+    IVcsHostService vcsHostService) : IHighLogic
 where TCommitId : IEquatable<TCommitId>
 {
     private readonly HighDb db = db;

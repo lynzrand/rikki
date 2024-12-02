@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using CommandLine;
 using Rynco.Rikki.Db;
 
@@ -8,6 +10,12 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddScoped<RikkiDbContext>();
 builder.Services.AddScoped<HighDb>();
 builder.Services.AddLogging();
+builder.Services.AddControllers().AddJsonOptions(o =>
+{
+    o.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower;
+    o.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
+    o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+});
 
 var app = builder.Build();
 
@@ -16,7 +24,6 @@ app.UsePathBase("/api/v1");
 app.MapControllers();
 
 app.Run();
-
 
 class Options
 {
